@@ -140,12 +140,11 @@ class WBParser:
 
     async def _find_basket(self, nm_id: str, vol: int, part: int) -> Optional[int]:
         """
-        Найти рабочий basket с оптимизацией через кеш и приоритетную проверку.
+        Найти рабочий basket последовательным перебором с кешем.
 
         Стратегия:
         1. Проверить кеш vol → basket
-        2. Приоритетно проверить "горячую зону" (basket 20-30) - большинство товаров
-        3. Проверить оставшиеся диапазоны параллельными батчами
+        2. Последовательный перебор 1-100 батчами по 50
 
         Args:
             nm_id: Артикул
@@ -165,30 +164,18 @@ class WBParser:
                 logger.debug(f"Product {nm_id}: cache hit - basket {cached_basket}")
                 return cached_basket
 
-        # Приоритетная "горячая зона" (basket 20-30) - проверяем первой
-        hot_zone = list(range(20, 31))
-        logger.debug(f"Product {nm_id}: checking hot zone {hot_zone[0]}-{hot_zone[-1]}")
-
-        basket = await self._check_basket_batch(nm_id, vol, part, hot_zone)
-        if basket:
-            self._basket_cache[vol] = basket  # Сохраняем в кеш
-            logger.info(f"Product {nm_id}: found basket={basket:02d} in hot zone")
-            return basket
-
-        # Проверка остальных диапазонов (1-19, 31-100) батчами
-        remaining_baskets = list(range(1, 20)) + list(range(31, self.MAX_BASKET + 1))
-
-        # Разбиваем на батчи
-        for i in range(0, len(remaining_baskets), self.BASKET_BATCH_SIZE):
+        # Последовательный перебор 1-100 батчами
+        for i in range(1, self.MAX_BASKET + 1, self.BASKET_BATCH_SIZE):
             # Проверка timeout
             if time.time() - start_time > self.BASKET_SEARCH_TIMEOUT:
                 logger.warning(
                     f"Product {nm_id}: basket search timeout after {self.BASKET_SEARCH_TIMEOUT}s "
-                    f"(checked {i + len(hot_zone)} baskets, vol={vol}, part={part})"
+                    f"(checked up to basket {i-1}, vol={vol}, part={part})"
                 )
                 return None
 
-            batch = remaining_baskets[i:i + self.BASKET_BATCH_SIZE]
+            # Формируем батч
+            batch = list(range(i, min(i + self.BASKET_BATCH_SIZE, self.MAX_BASKET + 1)))
             basket = await self._check_basket_batch(nm_id, vol, part, batch)
 
             if basket:
