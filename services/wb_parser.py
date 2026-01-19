@@ -37,9 +37,7 @@ class WBParser:
     """Парсер медиа Wildberries через прямые basket URL."""
 
     MAX_PHOTOS = 20    # Максимальное количество фото для проверки
-    BASKET_BATCH_SIZE = 50  # Размер батча для параллельной проверки basket
-    BASKET_SEARCH_TIMEOUT = 90  # Максимум секунд на поиск basket
-    MAX_BASKET = 100  # Максимальный номер basket для проверки
+    MAX_BASKET = 100   # Максимальный номер basket для проверки
 
     # In-memory кеш vol → basket для ускорения повторных запросов
     _basket_cache: dict[int, int] = {}
@@ -113,12 +111,8 @@ class WBParser:
             basket_elapsed = time.perf_counter() - basket_start
 
             if not working_basket:
-                logger.error(
-                    f"❌ Product {nm_id}: basket NOT FOUND после {basket_elapsed:.2f}s"
-                )
-                raise ProductNotFoundError(
-                    f"Товар {nm_id} не найден (timeout {self.BASKET_SEARCH_TIMEOUT}s)"
-                )
+                logger.error(f"❌ Product {nm_id}: basket NOT FOUND ({basket_elapsed:.2f}s)")
+                raise ProductNotFoundError(f"Товар {nm_id} не найден")
 
             logger.info(
                 f"✅ Product {nm_id}: basket={working_basket:02d} найден за {basket_elapsed:.2f}s"
@@ -166,11 +160,11 @@ class WBParser:
 
     async def _find_basket(self, nm_id: str, vol: int, part: int) -> Optional[int]:
         """
-        Найти рабочий basket последовательным перебором с кешем.
+        Найти рабочий basket параллельной проверкой всех 100.
 
         Стратегия:
         1. Проверить кеш vol → basket
-        2. Последовательный перебор 1-100 батчами по 50
+        2. Все 100 basket параллельно (1-2 сек)
 
         Args:
             nm_id: Артикул
@@ -180,53 +174,25 @@ class WBParser:
         Returns:
             Номер basket или None если не найден
         """
-        start_time = time.time()
-
         # Проверка кеша
         if vol in self._basket_cache:
             cached_basket = self._basket_cache[vol]
-            logger.debug(f"🗂️  Product {nm_id}: проверка кеша basket={cached_basket} для vol={vol}")
             if await self._check_single_basket(nm_id, vol, part, cached_basket):
-                logger.info(f"✅ Product {nm_id}: cache HIT - basket={cached_basket}")
+                logger.info(f"✅ Product {nm_id}: cache HIT basket={cached_basket}")
                 return cached_basket
-            else:
-                logger.debug(f"❌ Product {nm_id}: cache MISS - basket={cached_basket} не актуален")
 
-        # Последовательный перебор 1-100 батчами
-        logger.debug(f"🔍 Product {nm_id}: начинаем перебор basket 1-{self.MAX_BASKET} батчами по {self.BASKET_BATCH_SIZE}")
+        # Все 100 basket параллельно
+        logger.debug(f"🔍 Product {nm_id}: проверка всех {self.MAX_BASKET} basket параллельно")
 
-        for i in range(1, self.MAX_BASKET + 1, self.BASKET_BATCH_SIZE):
-            # Проверка timeout
-            elapsed = time.time() - start_time
-            if elapsed > self.BASKET_SEARCH_TIMEOUT:
-                logger.warning(
-                    f"⏱️  Product {nm_id}: basket search TIMEOUT после {elapsed:.1f}s "
-                    f"(проверено до basket {i-1}, vol={vol}, part={part})"
-                )
-                return None
+        all_baskets = list(range(1, self.MAX_BASKET + 1))
+        basket = await self._check_basket_batch(nm_id, vol, part, all_baskets)
 
-            # Формируем батч
-            batch = list(range(i, min(i + self.BASKET_BATCH_SIZE, self.MAX_BASKET + 1)))
-            logger.debug(f"🔄 Product {nm_id}: проверка batch {i}-{batch[-1]} ({len(batch)} baskets)")
+        if basket:
+            self._basket_cache[vol] = basket
+            logger.info(f"✅ Product {nm_id}: basket={basket:02d} найден, сохранен в кеш")
+            return basket
 
-            basket = await self._check_basket_batch(nm_id, vol, part, batch)
-
-            if basket:
-                self._basket_cache[vol] = basket  # Сохраняем в кеш
-                logger.info(
-                    f"✅ Product {nm_id}: basket={basket:02d} найден в batch {i}-{batch[-1]}, "
-                    f"сохранен в кеш для vol={vol}"
-                )
-                return basket
-
-            # Минимальная задержка между батчами
-            await asyncio.sleep(0.05)
-
-        # Товар не найден ни в одном basket
-        logger.error(
-            f"Product {nm_id} NOT FOUND in any basket (1-{self.MAX_BASKET}). "
-            f"vol={vol}, part={part}. Требуется расследование!"
-        )
+        logger.error(f"❌ Product {nm_id} NOT FOUND in any basket (1-{self.MAX_BASKET})")
         return None
 
     async def _check_basket_batch(
