@@ -3,6 +3,7 @@
 from aiogram import Router
 from aiogram.types import Message
 import logging
+import time
 
 from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
@@ -21,11 +22,25 @@ async def handle_article(message: Message):
     Args:
         message: Сообщение от пользователя
     """
+    start_time = time.perf_counter()
+
+    user = message.from_user
+    user_info = (
+        f"id={user.id}, "
+        f"username=@{user.username if user.username else 'None'}, "
+        f"name={user.first_name or ''} {user.last_name or ''}".strip()
+    )
+
+    logger.info(
+        f"📨 Получен запрос от пользователя [{user_info}]: "
+        f"'{message.text[:50]}{'...' if len(message.text) > 50 else ''}'"
+    )
+
     try:
         # Валидация и извлечение артикула
         nm_id = ArticleValidator.extract_article(message.text)
 
-        logger.info(f"User {message.from_user.id} requested article {nm_id}")
+        logger.info(f"✅ Артикул распознан: {nm_id} (user {user.id})")
 
         # Отправка сообщения о поиске
         status_msg = await message.answer(f"🔍 Ищу товар {nm_id}...")
@@ -38,6 +53,11 @@ async def handle_article(message: Message):
         if not media.has_photos() and not media.has_video():
             await status_msg.edit_text(
                 f"❌ У товара {nm_id} нет фото и видео"
+            )
+            elapsed = time.perf_counter() - start_time
+            logger.warning(
+                f"⚠️  Товар {nm_id} без медиа для user {user.id}, "
+                f"time={elapsed:.2f}s"
             )
             return
 
@@ -62,30 +82,49 @@ async def handle_article(message: Message):
             reply_markup=get_media_type_keyboard(nm_id)
         )
 
+        elapsed = time.perf_counter() - start_time
         logger.info(
-            f"Product {nm_id} found: "
-            f"photos={len(media.photos)}, video={media.has_video()}"
+            f"✅ Товар {nm_id} найден и отправлен пользователю {user.id}: "
+            f"photos={len(media.photos)}, video={media.has_video()}, "
+            f"time={elapsed:.2f}s"
         )
 
     except InvalidArticleError as e:
         await message.answer(str(e))
+        elapsed = time.perf_counter() - start_time
+        logger.warning(
+            f"❌ Неверный формат артикула от user {user.id}: '{message.text}', "
+            f"time={elapsed:.2f}s"
+        )
 
     except ProductNotFoundError:
         await message.answer(
             f"❌ Товар не найден на Wildberries.\n"
             f"Проверьте артикул и попробуйте снова."
         )
-        logger.warning(f"Product not found for user input: {message.text}")
+        elapsed = time.perf_counter() - start_time
+        logger.warning(
+            f"❌ Товар не найден для user {user.id}: '{message.text}', "
+            f"time={elapsed:.2f}s"
+        )
 
     except WBAPIError as e:
         await message.answer(
             "❌ Не удалось получить данные с Wildberries.\n"
             "Попробуйте позже."
         )
-        logger.error(f"WB API error for article {message.text}: {e}")
+        elapsed = time.perf_counter() - start_time
+        logger.error(
+            f"❌ WB API ошибка для user {user.id}, текст '{message.text}': "
+            f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+        )
 
     except Exception as e:
         await message.answer(
             "❌ Произошла ошибка. Попробуйте позже."
         )
-        logger.exception(f"Unexpected error handling article: {e}")
+        elapsed = time.perf_counter() - start_time
+        logger.exception(
+            f"❌ Неожиданная ошибка для user {user.id}, текст '{message.text}': "
+            f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+        )

@@ -3,6 +3,7 @@
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 import logging
+import time
 
 from services.wb_parser import WBParser
 from services.media_downloader import MediaDownloader
@@ -23,6 +24,15 @@ async def handle_download_callback(callback: CallbackQuery, bot: Bot):
         callback: Callback query от пользователя
         bot: Bot instance
     """
+    start_time = time.perf_counter()
+
+    user = callback.from_user
+    user_info = (
+        f"id={user.id}, "
+        f"username=@{user.username if user.username else 'None'}, "
+        f"name={user.first_name or ''} {user.last_name or ''}".strip()
+    )
+
     await callback.answer()
 
     try:
@@ -30,8 +40,8 @@ async def handle_download_callback(callback: CallbackQuery, bot: Bot):
         _, nm_id, media_type = callback.data.split(":")
 
         logger.info(
-            f"User {callback.from_user.id} selected {media_type} "
-            f"for product {nm_id}"
+            f"🎯 Callback от пользователя [{user_info}]: "
+            f"товар={nm_id}, тип={media_type}"
         )
 
         # Удаление клавиатуры и обновление сообщения
@@ -71,23 +81,36 @@ async def handle_download_callback(callback: CallbackQuery, bot: Bot):
             # Сообщение уже удалено в send_photos/send_video
             pass
 
+        elapsed = time.perf_counter() - start_time
         logger.info(
-            f"Successfully sent {media_type} for product {nm_id} "
-            f"to user {callback.from_user.id}"
+            f"✅ Успешно отправлено {media_type} для товара {nm_id} "
+            f"пользователю {user.id}, time={elapsed:.2f}s"
         )
 
     except NoMediaError as e:
         await callback.message.edit_text(f"❌ {str(e)}")
-        logger.warning(f"No media error for {nm_id}: {e}")
+        elapsed = time.perf_counter() - start_time
+        logger.warning(
+            f"⚠️  Нет медиа для товара {nm_id}, user {user.id}: "
+            f"{e}, time={elapsed:.2f}s"
+        )
 
     except WBAPIError as e:
         await callback.message.edit_text(
             "❌ Не удалось загрузить медиа. Попробуйте позже."
         )
-        logger.error(f"WB API error for {nm_id}: {e}")
+        elapsed = time.perf_counter() - start_time
+        logger.error(
+            f"❌ WB API ошибка для товара {nm_id}, user {user.id}: "
+            f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+        )
 
     except Exception as e:
         await callback.message.edit_text(
             "❌ Произошла ошибка при загрузке."
         )
-        logger.exception(f"Download error for {nm_id}: {e}")
+        elapsed = time.perf_counter() - start_time
+        logger.exception(
+            f"❌ Ошибка загрузки для товара {nm_id}, user {user.id}: "
+            f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+        )

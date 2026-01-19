@@ -1,7 +1,10 @@
 """Валидация артикулов и ссылок Wildberries."""
 
 import re
+import logging
 from utils.exceptions import InvalidArticleError
+
+logger = logging.getLogger(__name__)
 
 
 class ArticleValidator:
@@ -30,8 +33,11 @@ class ArticleValidator:
         """
         text = text.strip()
 
+        logger.debug(f"🔍 Попытка извлечения артикула из: '{text[:50]}'")
+
         # Проверка: просто артикул (6-10 цифр)
         if text.isdigit() and 6 <= len(text) <= 10:
+            logger.debug(f"✅ Найден прямой артикул: {text}")
             return text
 
         # Проверка: ссылка
@@ -40,8 +46,12 @@ class ArticleValidator:
             if match:
                 article = match.group(1)
                 if ArticleValidator.is_valid_article(article):
+                    logger.debug(
+                        f"✅ Артикул извлечен из URL по паттерну '{pattern}': {article}"
+                    )
                     return article
 
+        logger.warning(f"❌ Не удалось распознать артикул в тексте: '{text[:50]}'")
         raise InvalidArticleError(
             "❌ Неверный формат. Отправьте:\n"
             "• Артикул (например: 12345678)\n"
@@ -59,4 +69,7 @@ class ArticleValidator:
         Returns:
             True если артикул валидный, False иначе
         """
-        return article.isdigit() and 6 <= len(article) <= 10
+        is_valid = article.isdigit() and 6 <= len(article) <= 10
+        if not is_valid:
+            logger.debug(f"❌ Невалидный артикул: {article} (не цифры или длина не 6-10)")
+        return is_valid
