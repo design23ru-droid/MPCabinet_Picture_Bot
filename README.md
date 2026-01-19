@@ -243,13 +243,9 @@ WBBotException              # Базовое
 2. Middleware level - ErrorHandlerMiddleware (глобальный)
 3. Decorator level - @retry_on_telegram_error
 
-## API Wildberries
+## Получение медиа Wildberries
 
-Бот использует **публичное API** Wildberries для получения данных о товарах:
-
-- **Endpoint**: `https://card.wb.ru/cards/v1/detail?nm={артикул}`
-- **Авторизация**: Не требуется
-- **Rate Limiting**: ~10-20 запросов/сек (неофициально)
+Бот получает медиафайлы товаров напрямую через CDN Wildberries (wbbasket.ru).
 
 ### Формулы URL медиа
 
