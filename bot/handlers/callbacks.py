@@ -8,12 +8,14 @@ import time
 from services.wb_parser import WBParser
 from services.media_downloader import MediaDownloader
 from utils.exceptions import NoMediaError, WBAPIError
+from utils.decorators import retry_on_telegram_error
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 
 @router.callback_query(F.data.startswith("download:"))
+@retry_on_telegram_error(max_retries=3, delay=1.0)
 async def handle_download_callback(callback: CallbackQuery, bot: Bot):
     """
     Обработчик callback для загрузки медиа.

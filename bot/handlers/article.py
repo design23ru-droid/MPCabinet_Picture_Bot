@@ -9,12 +9,14 @@ from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
 from services.wb_parser import WBParser
 from bot.keyboards.inline import get_media_type_keyboard
+from utils.decorators import retry_on_telegram_error
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 
 @router.message()
+@retry_on_telegram_error(max_retries=3, delay=1.0)
 async def handle_article(message: Message):
     """
     Обработчик артикулов и ссылок.

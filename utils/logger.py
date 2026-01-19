@@ -20,8 +20,8 @@ def setup_logger() -> None:
     # Формат для консоли (более компактный)
     console_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
-    # Формат времени с миллисекундами
-    date_format = '%Y-%m-%d %H:%M:%S,%f'
+    # Формат времени
+    date_format = '%Y-%m-%d %H:%M:%S'
 
     # Создание formatters
     detailed_formatter = logging.Formatter(detailed_format, datefmt=date_format)

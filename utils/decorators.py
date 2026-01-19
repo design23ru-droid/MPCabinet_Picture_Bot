@@ -3,6 +3,7 @@
 import time
 import logging
 import functools
+import inspect
 from typing import Callable, Any
 
 
@@ -70,7 +71,7 @@ def log_execution_time(logger: logging.Logger = None):
                 raise
 
         # Определяем, async или sync функция
-        if functools.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         else:
             return sync_wrapper
@@ -124,9 +125,70 @@ def log_function_call(logger: logging.Logger = None, log_args: bool = False):
             result = func(*args, **kwargs)
             return result
 
-        if functools.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         else:
             return sync_wrapper
 
+    return decorator
+
+
+def retry_on_telegram_error(max_retries: int = 3, delay: float = 1.0):
+    """
+    Декоратор для автоматических повторов при сетевых ошибках Telegram.
+
+    Args:
+        max_retries: Максимальное количество попыток
+        delay: Начальная задержка между попытками (секунды)
+
+    Usage:
+        @retry_on_telegram_error(max_retries=3, delay=1.0)
+        async def send_message():
+            await bot.send_message(...)
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs) -> Any:
+            logger = logging.getLogger(func.__module__)
+            func_name = func.__qualname__
+
+            last_exception = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+
+                    # Проверяем, является ли это сетевой ошибкой Telegram
+                    error_name = type(e).__name__
+                    is_network_error = (
+                        'TelegramNetworkError' in error_name or
+                        'ClientConnectorError' in error_name or
+                        'ClientOSError' in error_name or
+                        'TimeoutError' in error_name or
+                        'ServerDisconnectedError' in error_name
+                    )
+
+                    if not is_network_error or attempt >= max_retries:
+                        # Не сетевая ошибка или последняя попытка - пробрасываем
+                        logger.error(
+                            f"❌ {func_name}() завершилась с ошибкой после {attempt} попыток: "
+                            f"{error_name}: {e}"
+                        )
+                        raise
+
+                    # Сетевая ошибка, повторяем
+                    retry_delay = delay * (2 ** (attempt - 1))  # Экспоненциальная задержка
+                    logger.warning(
+                        f"⚠️  {func_name}() попытка {attempt}/{max_retries} неудачна: "
+                        f"{error_name}. Повтор через {retry_delay:.1f}s..."
+                    )
+
+                    import asyncio
+                    await asyncio.sleep(retry_delay)
+
+            # Не должны сюда попасть, но на всякий случай
+            raise last_exception
+
+        return wrapper
     return decorator
