@@ -79,7 +79,8 @@ class MediaDownloader:
                 batch_start = time.perf_counter()
                 await self.bot.send_media_group(
                     chat_id=chat_id,
-                    media=media_group
+                    media=media_group,
+                    request_timeout=120  # Увеличен таймаут для медленных сетей
                 )
                 batch_time = time.perf_counter() - batch_start
 
@@ -144,7 +145,8 @@ class MediaDownloader:
             await self.bot.send_video(
                 chat_id=chat_id,
                 video=URLInputFile(media.video),
-                caption=f"Видео: {media.name}"
+                caption=f"Видео: {media.name}",
+                request_timeout=120  # Увеличен таймаут для медленных сетей
             )
             video_time = time.perf_counter() - video_start
 
