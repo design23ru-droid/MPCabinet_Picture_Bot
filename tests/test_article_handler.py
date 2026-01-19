@@ -42,7 +42,6 @@ class TestArticleHandler:
         assert "Товар найден" in final_text
         assert "12345678" in final_text
         assert "Фото:" in final_text
-        assert "Видео:" in final_text
 
     @pytest.mark.asyncio
     async def test_handle_article_photos_only(self, message, product_media_photos_only):
@@ -99,7 +98,7 @@ class TestArticleHandler:
         status_msg = message.answer.return_value
         assert status_msg.edit_text.called
         error_text = status_msg.edit_text.call_args[0][0]
-        assert "нет фото и видео" in error_text
+        assert "нет фото" in error_text
 
     @pytest.mark.asyncio
     async def test_handle_article_invalid_article(self, message):

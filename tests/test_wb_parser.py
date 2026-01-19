@@ -146,7 +146,7 @@ class TestWBParser:
                 )
 
         async with WBParser() as parser:
-            with pytest.raises(NoMediaError, match="нет фото и видео"):
+            with pytest.raises(NoMediaError, match="нет медиа"):
                 await parser.get_product_media(nm_id)
 
     @pytest.mark.asyncio

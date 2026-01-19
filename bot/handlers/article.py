@@ -47,34 +47,22 @@ async def handle_article(message: Message):
         # Отправка сообщения о поиске
         status_msg = await message.answer(f"🔍 Ищу товар {nm_id}...")
 
-        # Получение данных о товаре
+        # Получение данных о товаре (только фото, видео ищем позже)
         async with WBParser() as parser:
-            media = await parser.get_product_media(nm_id)
+            media = await parser.get_product_media(nm_id, skip_video=True)
 
-        # Проверка наличия медиа
-        if not media.has_photos() and not media.has_video():
-            await status_msg.edit_text(
-                f"❌ У товара {nm_id} нет фото и видео"
-            )
+        # Проверка наличия фото
+        if not media.has_photos():
+            await status_msg.edit_text(f"❌ У товара {nm_id} нет фото")
             elapsed = time.perf_counter() - start_time
-            logger.warning(
-                f"⚠️  Товар {nm_id} без медиа для user {user.id}, "
-                f"time={elapsed:.2f}s"
-            )
+            logger.warning(f"⚠️  Товар {nm_id} без фото для user {user.id}, time={elapsed:.2f}s")
             return
-
-        # Формирование текста с информацией
-        media_info = []
-        if media.has_photos():
-            media_info.append(f"📷 Фото: {len(media.photos)} шт.")
-        if media.has_video():
-            media_info.append("🎥 Видео: есть")
 
         info_text = (
             f"✅ Товар найден!\n\n"
             f"📦 {media.name}\n"
             f"🔢 Артикул: {nm_id}\n\n"
-            f"{chr(10).join(media_info)}\n\n"
+            f"📷 Фото: {len(media.photos)} шт.\n\n"
             f"Выберите что хотите получить:"
         )
 
@@ -86,9 +74,8 @@ async def handle_article(message: Message):
 
         elapsed = time.perf_counter() - start_time
         logger.info(
-            f"✅ Товар {nm_id} найден и отправлен пользователю {user.id}: "
-            f"photos={len(media.photos)}, video={media.has_video()}, "
-            f"time={elapsed:.2f}s"
+            f"✅ Товар {nm_id} найден: photos={len(media.photos)}, "
+            f"user={user.id}, time={elapsed:.2f}s"
         )
 
     except InvalidArticleError as e:

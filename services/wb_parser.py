@@ -69,18 +69,19 @@ class WBParser:
             logger.debug("📡 HTTP сессия закрыта")
 
     @log_execution_time()
-    async def get_product_media(self, nm_id: str) -> ProductMedia:
+    async def get_product_media(
+        self,
+        nm_id: str,
+        skip_video: bool = False,
+        skip_photos: bool = False
+    ) -> ProductMedia:
         """
         Получить медиа товара по артикулу.
 
-        Алгоритм:
-        1. Вычислить vol и part из nmID
-        2. Перебрать basket до нахождения или timeout
-        3. Перебрать номера фото (1,2,3...) пока не получим 404
-        4. Проверить видео по URL video.wildberries.ru
-
         Args:
             nm_id: Артикул товара
+            skip_video: Пропустить поиск видео (ускоряет запрос)
+            skip_photos: Пропустить поиск фото (только видео)
 
         Returns:
             ProductMedia объект с URLs фото и видео
@@ -118,28 +119,28 @@ class WBParser:
                 f"✅ Product {nm_id}: basket={working_basket:02d} найден за {basket_elapsed:.2f}s"
             )
 
-            # 2. Найти все фото
-            photos_start = time.perf_counter()
-            photos = await self._find_photos(nm_id, vol, part, working_basket)
-            photos_elapsed = time.perf_counter() - photos_start
+            # 2. Найти фото (если не skip_photos)
+            photos = []
+            if not skip_photos:
+                photos_start = time.perf_counter()
+                photos = await self._find_photos(nm_id, vol, part, working_basket)
+                photos_elapsed = time.perf_counter() - photos_start
+                logger.info(f"📷 Product {nm_id}: найдено {len(photos)} фото за {photos_elapsed:.2f}s")
 
-            logger.info(
-                f"📷 Product {nm_id}: найдено {len(photos)} фото за {photos_elapsed:.2f}s"
-            )
-
-            # 3. Проверить видео
-            video_start = time.perf_counter()
-            video = await self._check_video(nm_id)
-            video_elapsed = time.perf_counter() - video_start
-
-            if video:
-                logger.info(f"🎥 Product {nm_id}: видео найдено за {video_elapsed:.2f}s")
-            else:
-                logger.info(f"🎥 Product {nm_id}: видео НЕ найдено (поиск {video_elapsed:.2f}s)")
+            # 3. Найти видео (если не skip_video)
+            video = None
+            if not skip_video:
+                video_start = time.perf_counter()
+                video = await self._check_video(nm_id)
+                video_elapsed = time.perf_counter() - video_start
+                if video:
+                    logger.info(f"🎥 Product {nm_id}: видео найдено за {video_elapsed:.2f}s")
+                else:
+                    logger.info(f"🎥 Product {nm_id}: видео НЕ найдено ({video_elapsed:.2f}s)")
 
             # Проверка что нашли хоть что-то
             if not photos and not video:
-                raise NoMediaError(f"У товара {nm_id} нет фото и видео")
+                raise NoMediaError(f"У товара {nm_id} нет медиа")
 
             return ProductMedia(
                 nm_id=nm_id,

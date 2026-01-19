@@ -50,9 +50,14 @@ async def handle_download_callback(callback: CallbackQuery, bot: Bot):
         await callback.message.edit_reply_markup(reply_markup=None)
         status_msg = await callback.message.edit_text("⏳ Загружаю...")
 
-        # Получение данных товара
+        # Получение данных товара (ленивый поиск)
         async with WBParser() as parser:
-            media = await parser.get_product_media(nm_id)
+            if media_type == "photo":
+                media = await parser.get_product_media(nm_id, skip_video=True)
+            elif media_type == "video":
+                media = await parser.get_product_media(nm_id, skip_photos=True)
+            else:  # both
+                media = await parser.get_product_media(nm_id)
 
         # Загрузка и отправка медиа
         downloader = MediaDownloader(bot)
