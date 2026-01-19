@@ -1,5 +1,6 @@
 """Конфигурация бота через переменные окружения."""
 
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,12 @@ class Settings(BaseSettings):
     # Дополнительные опции для DEBUG режима
     DEBUG_HTTP_REQUESTS: bool = False  # Логировать все HTTP запросы (только в DEBUG)
     DEBUG_MEASURE_TIME: bool = False  # Измерять время всех операций (только в DEBUG)
+
+    # HLS конвертация
+    FFMPEG_PATH: str = "ffmpeg"  # Путь к ffmpeg (или "ffmpeg" если в PATH)
+    HLS_CONVERT_TIMEOUT: int = 300  # 5 минут макс на конвертацию
+    HLS_TEMP_DIR: Optional[str] = None  # None = системная temp
+    HLS_MAX_VIDEO_SIZE_MB: int = 50  # Лимит Telegram для локальных файлов
 
     model_config = SettingsConfigDict(
         env_file=".env",

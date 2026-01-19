@@ -24,3 +24,13 @@ class NoMediaError(WBBotException):
 class WBAPIError(WBBotException):
     """Ошибка при работе с API Wildberries."""
     pass
+
+
+class HLSConversionError(WBBotException):
+    """Ошибка конвертации HLS видео."""
+    pass
+
+
+class FFmpegNotFoundError(HLSConversionError):
+    """ffmpeg не установлен в системе."""
+    pass

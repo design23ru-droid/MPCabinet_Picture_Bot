@@ -3,12 +3,14 @@
 import asyncio
 import logging
 import time
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 from aiogram import Bot
-from aiogram.types import Message, InputMediaPhoto, URLInputFile
+from aiogram.types import Message, InputMediaPhoto, URLInputFile, FSInputFile
 
 from services.wb_parser import ProductMedia
-from utils.exceptions import NoMediaError
+from services.hls_converter import HLSConverter
+from utils.exceptions import NoMediaError, HLSConversionError, FFmpegNotFoundError
 from utils.decorators import log_execution_time
 
 logger = logging.getLogger(__name__)
@@ -119,6 +121,8 @@ class MediaDownloader:
         """
         Отправка видео пользователю.
 
+        Если видео в HLS формате (m3u8), конвертирует в MP4 через ffmpeg.
+
         Args:
             chat_id: ID чата
             media: Медиа товара
@@ -126,6 +130,8 @@ class MediaDownloader:
 
         Raises:
             NoMediaError: Нет видео у товара
+            HLSConversionError: Ошибка конвертации HLS
+            FFmpegNotFoundError: ffmpeg не установлен
         """
         if not media.has_video():
             raise NoMediaError("У этого товара нет видео")
@@ -135,16 +141,42 @@ class MediaDownloader:
             f"(product {media.nm_id}, URL: {media.video})"
         )
 
-        try:
-            await status_msg.edit_text("🎥 Загружаю видео...")
-        except Exception as e:
-            logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
+        # Определяем тип видео
+        is_hls = HLSConverter.is_hls_url(media.video)
+        temp_path: Optional[Path] = None
+        converter: Optional[HLSConverter] = None
 
         try:
+            if is_hls:
+                # HLS требует конвертации
+                try:
+                    await status_msg.edit_text("🎥 Конвертирую видео (HLS → MP4)...")
+                except Exception as e:
+                    logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
+
+                converter = HLSConverter()
+                temp_path = await converter.convert_hls_to_mp4(
+                    media.video,
+                    nm_id=media.nm_id
+                )
+                video_input = FSInputFile(temp_path)
+
+                try:
+                    await status_msg.edit_text("🎥 Отправляю видео...")
+                except Exception:
+                    pass
+            else:
+                # Прямой MP4 URL
+                try:
+                    await status_msg.edit_text("🎥 Загружаю видео...")
+                except Exception as e:
+                    logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
+                video_input = URLInputFile(media.video)
+
             video_start = time.perf_counter()
             await self.bot.send_video(
                 chat_id=chat_id,
-                video=URLInputFile(media.video),
+                video=video_input,
                 caption=f"Видео: {media.name}",
                 request_timeout=120  # Увеличен таймаут для медленных сетей
             )
@@ -155,19 +187,41 @@ class MediaDownloader:
                 f"✅ Видео успешно отправлено в чат {chat_id} за {video_time:.2f}s"
             )
 
+        except FFmpegNotFoundError:
+            logger.error("❌ ffmpeg не установлен")
+            try:
+                await status_msg.edit_text(
+                    "❌ Сервер не поддерживает HLS видео (ffmpeg не установлен)"
+                )
+            except Exception:
+                pass
+            raise
+
+        except HLSConversionError as e:
+            logger.error(f"❌ Ошибка конвертации HLS: {e}")
+            try:
+                await status_msg.edit_text(f"❌ Ошибка конвертации видео: {e}")
+            except Exception:
+                pass
+            raise
+
         except Exception as e:
             logger.error(
                 f"❌ Ошибка отправки видео: {type(e).__name__}: {e}\n"
                 f"URL: {media.video}"
             )
-            # Может быть файл слишком большой или недоступен
             try:
                 await status_msg.edit_text(
-                    "❌ Не удалось загрузить видео. Возможно, файл слишком большой (лимит 20 MB для URL)"
+                    "❌ Не удалось загрузить видео. Возможно, файл слишком большой (лимит 50 MB)"
                 )
             except Exception:
                 pass
             raise
+
+        finally:
+            # Очистка временного файла
+            if temp_path and converter:
+                converter.cleanup_temp_file(temp_path)
 
     @log_execution_time()
     async def send_both(
