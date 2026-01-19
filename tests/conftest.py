@@ -62,11 +62,20 @@ def message(user, chat):
 
 
 @pytest.fixture
-def callback_query(user, message):
+def callback_query(user):
     """Mock callback query."""
     cb = MagicMock(spec=CallbackQuery)
     cb.from_user = user
-    cb.message = message
+
+    # Mock message с async методами
+    cb_message = MagicMock()
+    cb_message.chat = MagicMock()
+    cb_message.chat.id = 123456789
+    cb_message.edit_text = AsyncMock()
+    cb_message.edit_reply_markup = AsyncMock()
+    cb_message.delete = AsyncMock()
+    cb.message = cb_message
+
     cb.data = "download:12345678:photo"
     cb.answer = AsyncMock()
     return cb
