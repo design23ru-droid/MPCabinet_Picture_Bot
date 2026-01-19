@@ -426,11 +426,6 @@ class WBParser:
         nm_id_int = int(nm_id)
         part = nm_id_int // 10000  # Формула для видео
 
-        logger.info(
-            f"🎥 Video HLS search for {nm_id}: part={part}, "
-            f"проверка {len(hot_combinations) + len(extended_combinations)} комбинаций"
-        )
-
         # Приоритет 1: Горячая зона vol 1-50
         hot_combinations = [
             (basket, vol)
@@ -444,6 +439,11 @@ class WBParser:
             for basket in range(1, 101)
             for vol in range(51, 201)
         ]
+
+        logger.info(
+            f"🎥 Video HLS search for {nm_id}: part={part}, "
+            f"проверка {len(hot_combinations) + len(extended_combinations)} комбинаций"
+        )
 
         all_combinations = hot_combinations + extended_combinations
 
