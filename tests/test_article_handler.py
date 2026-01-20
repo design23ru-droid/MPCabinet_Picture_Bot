@@ -42,6 +42,7 @@ class TestArticleHandler:
         assert "Товар найден" in final_text
         assert "12345678" in final_text
         assert "Фото:" in final_text
+        assert "wildberries.ru/catalog/12345678" in final_text
 
     @pytest.mark.asyncio
     async def test_handle_article_photos_only(self, message, product_media_photos_only):

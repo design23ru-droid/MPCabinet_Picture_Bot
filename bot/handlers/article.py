@@ -58,9 +58,11 @@ async def handle_article(message: Message):
             logger.warning(f"⚠️  Товар {nm_id} без фото для user {user.id}, time={elapsed:.2f}s")
             return
 
+        wb_url = f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
         info_text = (
             f"✅ Товар найден!\n\n"
-            f"📦 Артикул: {nm_id}\n\n"
+            f"📦 Артикул: {nm_id}\n"
+            f"🔗 {wb_url}\n\n"
             f"📷 Фото: {len(media.photos)} шт.\n\n"
             f"Выберите что хотите получить:"
         )
