@@ -424,22 +424,37 @@ class WBParser:
             f"{total_batches} батчей, timeout=30s"
         )
 
+        batch_times = []  # Время обработки батчей для анализа
+
         for i in range(0, len(all_combinations), BATCH_SIZE):
             # Timeout check
             elapsed = time.time() - start_time
             if elapsed > 30:
-                logger.warning(f"⏱️  Video search TIMEOUT для {nm_id} после {elapsed:.1f}s")
+                avg_time = sum(batch_times) / len(batch_times) if batch_times else 0
+                logger.warning(
+                    f"⏱️  Video search TIMEOUT для {nm_id} после {elapsed:.1f}s, "
+                    f"остановлен на batch {batch_num}/{total_batches}, "
+                    f"avg batch time: {avg_time:.3f}s"
+                )
                 return None
 
             batch = all_combinations[i:i + BATCH_SIZE]
             batch_num = i // BATCH_SIZE + 1
-
-            logger.debug(
-                f"🔄 Video {nm_id}: batch {batch_num}/{total_batches} "
-                f"(elapsed {elapsed:.1f}s)"
-            )
+            batch_start = time.time()
 
             result = await self._check_video_batch(nm_id, part, batch)
+
+            batch_time = time.time() - batch_start
+            batch_times.append(batch_time)
+
+            # Логирование каждые 10 батчей
+            if batch_num % 10 == 0:
+                avg_time = sum(batch_times[-10:]) / 10
+                logger.info(
+                    f"🔄 Video {nm_id}: batch {batch_num}/{total_batches}, "
+                    f"elapsed={elapsed:.1f}s, last 10 avg={avg_time:.3f}s/batch"
+                )
+
             if result:
                 basket, vol = result
                 url = (
