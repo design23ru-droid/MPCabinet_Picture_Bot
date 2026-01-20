@@ -68,8 +68,9 @@ async def handle_article(message: Message):
 
         # Отправка клавиатуры с начальным статусом видео
         await status_msg.edit_text(
-            text=info_text_base + f"🎥 Видео: ⏳ ищем 0%\n\n🔗 {wb_url}",
-            reply_markup=get_media_type_keyboard(nm_id)
+            text=info_text_base + f'🎥 Видео: ⏳ ищем 0%\n\n<a href="{wb_url}">&#8203;</a>',
+            reply_markup=get_media_type_keyboard(nm_id),
+            parse_mode="HTML"
         )
 
         # Запуск фонового поиска видео
@@ -77,8 +78,9 @@ async def handle_article(message: Message):
             """Обновление прогресса поиска видео."""
             try:
                 await status_msg.edit_text(
-                    text=info_text_base + f"🎥 Видео: ⏳ ищем {progress}%\n\n🔗 {wb_url}",
-                    reply_markup=get_media_type_keyboard(nm_id)
+                    text=info_text_base + f'🎥 Видео: ⏳ ищем {progress}%\n\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id),
+                    parse_mode="HTML"
                 )
             except Exception as e:
                 logger.debug(f"Failed to update progress: {e}")
@@ -96,8 +98,9 @@ async def handle_article(message: Message):
                 # Финальное обновление
                 video_status = "есть ✅" if video_url else "нет"
                 await status_msg.edit_text(
-                    text=info_text_base + f"🎥 Видео: {video_status}\n\n🔗 {wb_url}",
-                    reply_markup=get_media_type_keyboard(nm_id)
+                    text=info_text_base + f'🎥 Видео: {video_status}\n\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id),
+                    parse_mode="HTML"
                 )
 
                 video_elapsed = time.perf_counter() - start_time
@@ -109,8 +112,9 @@ async def handle_article(message: Message):
                 logger.error(f"Video search error for {nm_id}: {e}")
                 # Убираем строку о видео при ошибке
                 await status_msg.edit_text(
-                    text=info_text_base + f"\n🔗 {wb_url}",
-                    reply_markup=get_media_type_keyboard(nm_id)
+                    text=info_text_base + f'\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id),
+                    parse_mode="HTML"
                 )
 
         # Запускаем поиск в фоне
