@@ -131,13 +131,29 @@ class WBParser:
             # 3. Найти видео (если не skip_video)
             video = None
             if not skip_video:
-                video_start = time.perf_counter()
-                video = await self._check_video(nm_id)
-                video_elapsed = time.perf_counter() - video_start
-                if video:
-                    logger.info(f"🎥 Product {nm_id}: видео найдено за {video_elapsed:.2f}s")
+                # Проверка кеша
+                from services.video_cache import get_video_cache
+                cache = get_video_cache()
+                found_in_cache, cached_video = cache.get(nm_id)
+
+                if found_in_cache:
+                    # В кеше (может быть None если видео нет)
+                    video = cached_video
+                    status = "есть" if video else "НЕТ"
+                    logger.info(f"🎥 Product {nm_id}: видео из КЕША ({status})")
                 else:
-                    logger.info(f"🎥 Product {nm_id}: видео НЕ найдено ({video_elapsed:.2f}s)")
+                    # Нет в кеше - ищем
+                    video_start = time.perf_counter()
+                    video = await self._check_video(nm_id)
+                    video_elapsed = time.perf_counter() - video_start
+
+                    # Сохранить в кеш (даже если None - чтобы не искать повторно)
+                    cache.set(nm_id, video)
+
+                    if video:
+                        logger.info(f"🎥 Product {nm_id}: видео найдено за {video_elapsed:.2f}s")
+                    else:
+                        logger.info(f"🎥 Product {nm_id}: видео НЕ найдено ({video_elapsed:.2f}s)")
 
             # Проверка что нашли хоть что-то
             if not photos and not video:

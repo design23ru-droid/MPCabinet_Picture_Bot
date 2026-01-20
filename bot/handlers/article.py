@@ -9,6 +9,7 @@ import asyncio
 from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
 from services.wb_parser import WBParser
+from services.video_cache import get_video_cache
 from bot.keyboards.inline import get_media_type_keyboard
 from utils.decorators import retry_on_telegram_error
 
@@ -87,6 +88,10 @@ async def handle_article(message: Message):
             try:
                 async with WBParser() as parser:
                     video_url = await parser._check_video(nm_id, update_video_progress)
+
+                # Сохранение в кеш
+                cache = get_video_cache()
+                cache.set(nm_id, video_url)
 
                 # Финальное обновление
                 video_status = "есть ✅" if video_url else "нет"
