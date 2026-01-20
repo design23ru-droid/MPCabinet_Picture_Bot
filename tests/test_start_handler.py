@@ -23,8 +23,9 @@ class TestStartHandler:
         call_args = message.answer.call_args[0][0]
         assert "Привет" in call_args
         assert "Wildberries" in call_args
-        assert "Артикул" in call_args
-        assert "/help" in call_args
+        assert "артикул" in call_args
+        assert "MPCabinet" in call_args
+        assert "t.me/mpcabinet" in call_args
 
     @pytest.mark.asyncio
     async def test_cmd_help(self, message):
