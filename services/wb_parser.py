@@ -145,7 +145,7 @@ class WBParser:
 
             return ProductMedia(
                 nm_id=nm_id,
-                name=f"Товар {nm_id}",  # Название недоступно без API
+                name=f"Товар {nm_id}",
                 photos=photos,
                 video=video
             )

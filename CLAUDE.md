@@ -69,3 +69,29 @@
 
 - Справочник WB API: `docs/wb-api/README.md`
 - Промпты для разработки: `docs/wb-api/PROMPTS.md`
+
+## Запрещённые API
+
+**card.wb.ru** — запрещено предлагать к использованию. Этот API не работает. Бот получает медиа только через CDN wbbasket.ru.
+
+## Команды управления ботом (Git Bash)
+
+```bash
+# Остановить бота
+taskkill //F //IM python.exe 2>/dev/null || true
+
+# Проверить статус бота
+tasklist | grep -i python && echo "Бот работает" || echo "Бот остановлен"
+
+# Запустить бота (в фоне)
+cd /c/Users/SFran/Documents/GitHub/MPCabinet_Picture_Bot && python main.py &
+
+# Читать логи (последние 50 строк)
+tail -50 /c/Users/SFran/Documents/GitHub/MPCabinet_Picture_Bot/bot.log
+
+# Читать логи в реальном времени
+tail -50f /c/Users/SFran/Documents/GitHub/MPCabinet_Picture_Bot/bot.log
+```
+## Правило внесения изменений в код
+В код вносятся только утвержденные изменения. Если по ходу внесения изменений в код появляется необходимость что-то изменить еще, то каждое такое изменение согласовывается с пользователем.
+

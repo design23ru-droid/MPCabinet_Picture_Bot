@@ -60,8 +60,7 @@ async def handle_article(message: Message):
 
         info_text = (
             f"✅ Товар найден!\n\n"
-            f"📦 {media.name}\n"
-            f"🔢 Артикул: {nm_id}\n\n"
+            f"📦 Артикул: {nm_id}\n\n"
             f"📷 Фото: {len(media.photos)} шт.\n\n"
             f"Выберите что хотите получить:"
         )
