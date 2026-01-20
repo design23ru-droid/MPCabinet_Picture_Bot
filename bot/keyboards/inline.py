@@ -20,19 +20,19 @@ def get_media_type_keyboard(nm_id: str) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="📷 Фото",
+            text="📷 Скачать фото",
             callback_data=f"download:{nm_id}:photo"
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text="🎥 Видео",
+            text="🎥 Скачать видео",
             callback_data=f"download:{nm_id}:video"
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text="📷 + 🎥 Всё",
+            text="📷 + 🎥 Скачать всё",
             callback_data=f"download:{nm_id}:both"
         )
     )
