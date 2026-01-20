@@ -61,14 +61,13 @@ async def handle_article(message: Message):
 
         wb_url = f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
         info_text_base = (
-            f"✅ Товар найден!\n\n"
-            f"📦 Артикул: {nm_id}\n"
+            f"✅Товар: {nm_id} — найден!\n\n"
             f"📷 Фото: {len(media.photos)} шт.\n"
         )
 
         # Отправка клавиатуры с начальным статусом видео
         await status_msg.edit_text(
-            text=info_text_base + f"🎥 Видео: ⏳ ищем 0%\n🔗 {wb_url}",
+            text=info_text_base + f"🎥 Видео: ⏳ ищем 0%\n\n🔗 {wb_url}",
             reply_markup=get_media_type_keyboard(nm_id)
         )
 
@@ -77,7 +76,7 @@ async def handle_article(message: Message):
             """Обновление прогресса поиска видео."""
             try:
                 await status_msg.edit_text(
-                    text=info_text_base + f"🎥 Видео: ⏳ ищем {progress}%\n🔗 {wb_url}",
+                    text=info_text_base + f"🎥 Видео: ⏳ ищем {progress}%\n\n🔗 {wb_url}",
                     reply_markup=get_media_type_keyboard(nm_id)
                 )
             except Exception as e:
@@ -92,7 +91,7 @@ async def handle_article(message: Message):
                 # Финальное обновление
                 video_status = "есть ✅" if video_url else "нет"
                 await status_msg.edit_text(
-                    text=info_text_base + f"🎥 Видео: {video_status}\n🔗 {wb_url}",
+                    text=info_text_base + f"🎥 Видео: {video_status}\n\n🔗 {wb_url}",
                     reply_markup=get_media_type_keyboard(nm_id)
                 )
 
@@ -105,7 +104,7 @@ async def handle_article(message: Message):
                 logger.error(f"Video search error for {nm_id}: {e}")
                 # Убираем строку о видео при ошибке
                 await status_msg.edit_text(
-                    text=info_text_base + f"🔗 {wb_url}",
+                    text=info_text_base + f"\n🔗 {wb_url}",
                     reply_markup=get_media_type_keyboard(nm_id)
                 )
 

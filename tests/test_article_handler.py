@@ -40,7 +40,8 @@ class TestArticleHandler:
         final_call = status_msg.edit_text.call_args_list[-1]
         # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
-        assert "Товар найден" in final_text
+        assert "найден" in final_text
+        assert "Товар:" in final_text
         assert "12345678" in final_text
         assert "Фото:" in final_text
         assert "Видео:" in final_text  # Теперь всегда показываем прогресс
@@ -70,7 +71,8 @@ class TestArticleHandler:
         final_call = status_msg.edit_text.call_args_list[-1]
         # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
-        assert "Товар найден" in final_text
+        assert "найден" in final_text
+        assert "Товар:" in final_text
         assert "Фото:" in final_text
         # Теперь видео всегда показывается с прогрессом поиска
         assert "Видео:" in final_text
@@ -208,5 +210,6 @@ class TestArticleHandler:
         final_call = status_msg.edit_text.call_args_list[-1]
         # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
-        assert "Товар найден" in final_text
+        assert "найден" in final_text
+        assert "Товар:" in final_text
         assert "Видео:" in final_text  # Проверяем что прогресс видео показывается
