@@ -3,7 +3,7 @@
 import asyncio
 import aiohttp
 import socket
-from typing import List, Optional
+from typing import List, Optional, Callable, Awaitable
 from dataclasses import dataclass
 import logging
 import time
@@ -371,7 +371,11 @@ class WBParser:
 
         return None
 
-    async def _find_video_hls(self, nm_id: str) -> Optional[str]:
+    async def _find_video_hls(
+        self,
+        nm_id: str,
+        progress_callback: Optional[Callable[[int], Awaitable[None]]] = None
+    ) -> Optional[str]:
         """
         Найти HLS видео товара через быстрый перебор basket+vol.
 
@@ -385,6 +389,7 @@ class WBParser:
 
         Args:
             nm_id: Артикул товара
+            progress_callback: Callback для обновления прогресса (0-100%)
 
         Returns:
             URL плейлиста index.m3u8 или None
@@ -425,6 +430,7 @@ class WBParser:
         )
 
         batch_times = []  # Время обработки батчей для анализа
+        last_progress_update = start_time  # Для дебаунсинга обновлений прогресса
 
         for i in range(0, len(all_combinations), BATCH_SIZE):
             # Timeout check
@@ -441,6 +447,23 @@ class WBParser:
             batch = all_combinations[i:i + BATCH_SIZE]
             batch_num = i // BATCH_SIZE + 1
             batch_start = time.time()
+
+            # Обновление прогресса (каждые 10% с дебаунсингом 2 сек)
+            progress = int((batch_num / total_batches) * 100)
+            time_since_last_update = time.time() - last_progress_update
+
+            # Обновляем если прошло 2+ секунды ИЛИ каждые 10%
+            should_update = (
+                progress_callback is not None and
+                (time_since_last_update >= 2.0 or progress % 10 == 0)
+            )
+
+            if should_update:
+                try:
+                    await progress_callback(progress)
+                    last_progress_update = time.time()
+                except Exception as e:
+                    logger.warning(f"Progress callback error: {e}")
 
             result = await self._check_video_batch(nm_id, part, batch)
 
@@ -478,18 +501,23 @@ class WBParser:
         )
         return None
 
-    async def _check_video(self, nm_id: str) -> Optional[str]:
+    async def _check_video(
+        self,
+        nm_id: str,
+        progress_callback: Optional[Callable[[int], Awaitable[None]]] = None
+    ) -> Optional[str]:
         """
         Проверить наличие видео (HLS формат).
 
         Args:
             nm_id: Артикул
+            progress_callback: Callback для обновления прогресса (0-100%)
 
         Returns:
             URL видео или None
         """
         # HLS формат — единственный рабочий способ
-        hls_url = await self._find_video_hls(nm_id)
+        hls_url = await self._find_video_hls(nm_id, progress_callback)
 
         if hls_url:
             return hls_url

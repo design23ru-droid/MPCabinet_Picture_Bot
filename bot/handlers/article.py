@@ -4,6 +4,7 @@ from aiogram import Router
 from aiogram.types import Message
 import logging
 import time
+import asyncio
 
 from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
@@ -59,23 +60,62 @@ async def handle_article(message: Message):
             return
 
         wb_url = f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
-        info_text = (
+        info_text_base = (
             f"✅ Товар найден!\n\n"
             f"📦 Артикул: {nm_id}\n"
             f"📷 Фото: {len(media.photos)} шт.\n"
-            f"🔗 {wb_url}"
         )
 
-        # Отправка клавиатуры
+        # Отправка клавиатуры с начальным статусом видео
         await status_msg.edit_text(
-            text=info_text,
+            text=info_text_base + f"🎥 Видео: ⏳ ищем 0%\n🔗 {wb_url}",
             reply_markup=get_media_type_keyboard(nm_id)
         )
 
+        # Запуск фонового поиска видео
+        async def update_video_progress(progress: int):
+            """Обновление прогресса поиска видео."""
+            try:
+                await status_msg.edit_text(
+                    text=info_text_base + f"🎥 Видео: ⏳ ищем {progress}%\n🔗 {wb_url}",
+                    reply_markup=get_media_type_keyboard(nm_id)
+                )
+            except Exception as e:
+                logger.debug(f"Failed to update progress: {e}")
+
+        # Фоновый поиск видео
+        async def search_video():
+            try:
+                async with WBParser() as parser:
+                    video_url = await parser._check_video(nm_id, update_video_progress)
+
+                # Финальное обновление
+                video_status = "есть ✅" if video_url else "нет"
+                await status_msg.edit_text(
+                    text=info_text_base + f"🎥 Видео: {video_status}\n🔗 {wb_url}",
+                    reply_markup=get_media_type_keyboard(nm_id)
+                )
+
+                video_elapsed = time.perf_counter() - start_time
+                logger.info(
+                    f"✅ Товар {nm_id} найден: photos={len(media.photos)}, "
+                    f"video={bool(video_url)}, user={user.id}, time={video_elapsed:.2f}s"
+                )
+            except Exception as e:
+                logger.error(f"Video search error for {nm_id}: {e}")
+                # Убираем строку о видео при ошибке
+                await status_msg.edit_text(
+                    text=info_text_base + f"🔗 {wb_url}",
+                    reply_markup=get_media_type_keyboard(nm_id)
+                )
+
+        # Запускаем поиск в фоне
+        asyncio.create_task(search_video())
+
         elapsed = time.perf_counter() - start_time
         logger.info(
-            f"✅ Товар {nm_id} найден: photos={len(media.photos)}, "
-            f"user={user.id}, time={elapsed:.2f}s"
+            f"✅ Карточка {nm_id} отправлена: photos={len(media.photos)}, "
+            f"user={user.id}, time={elapsed:.2f}s (video search in background)"
         )
 
     except InvalidArticleError as e:

@@ -17,7 +17,8 @@ class TestArticleHandler:
 
         # Mock WBParser и keyboard
         with patch('bot.handlers.article.WBParser') as MockParser, \
-             patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard:
+             patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard, \
+             patch('bot.handlers.article.asyncio.create_task') as mock_create_task:
 
             mock_parser = AsyncMock()
             mock_parser.__aenter__.return_value = mock_parser
@@ -35,13 +36,14 @@ class TestArticleHandler:
         status_msg = message.answer.return_value
         assert status_msg.edit_text.called
 
-        # Проверка финального текста
+        # Проверка финального текста (начальное сообщение с прогрессом)
         final_call = status_msg.edit_text.call_args_list[-1]
         # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
         assert "Товар найден" in final_text
         assert "12345678" in final_text
         assert "Фото:" in final_text
+        assert "Видео:" in final_text  # Теперь всегда показываем прогресс
         assert "wildberries.ru/catalog/12345678" in final_text
 
     @pytest.mark.asyncio
@@ -50,7 +52,8 @@ class TestArticleHandler:
         message.text = "12345678"
 
         with patch('bot.handlers.article.WBParser') as MockParser, \
-             patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard:
+             patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard, \
+             patch('bot.handlers.article.asyncio.create_task') as mock_create_task:
 
             mock_parser = AsyncMock()
             mock_parser.__aenter__.return_value = mock_parser
@@ -62,15 +65,16 @@ class TestArticleHandler:
 
             await handle_article(message)
 
-        # Проверка что было отправлено
+        # Проверка что было отправлено (начальное сообщение с прогрессом)
         status_msg = message.answer.return_value
         final_call = status_msg.edit_text.call_args_list[-1]
         # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
         assert "Товар найден" in final_text
         assert "Фото:" in final_text
-        # Видео не должно быть упомянуто если его нет
-        assert final_text.count("Видео:") == 0 or "Видео:" not in final_text
+        # Теперь видео всегда показывается с прогрессом поиска
+        assert "Видео:" in final_text
+        assert "ищем" in final_text or "есть" in final_text or "нет" in final_text
 
     @pytest.mark.asyncio
     async def test_handle_article_no_media(self, message):
@@ -185,7 +189,8 @@ class TestArticleHandler:
         message.text = "https://www.wildberries.ru/catalog/12345678/detail.aspx"
 
         with patch('bot.handlers.article.WBParser') as MockParser, \
-             patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard:
+             patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard, \
+             patch('bot.handlers.article.asyncio.create_task') as mock_create_task:
 
             mock_parser = AsyncMock()
             mock_parser.__aenter__.return_value = mock_parser
@@ -204,3 +209,4 @@ class TestArticleHandler:
         # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
         assert "Товар найден" in final_text
+        assert "Видео:" in final_text  # Проверяем что прогресс видео показывается
