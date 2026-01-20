@@ -12,20 +12,23 @@ class TestStartHandler:
 
     @pytest.mark.asyncio
     async def test_cmd_start(self, message):
-        """Тест: команда /start отправляет приветственное сообщение."""
+        """Тест: команда /start отправляет приветственное сообщение (2 части)."""
         await cmd_start(message)
 
-        # Проверка что был вызван answer
+        # Проверка что было 2 вызова answer (приветствие разделено на части)
         assert message.answer.called
-        assert message.answer.call_count == 1
+        assert message.answer.call_count == 2
 
-        # Проверка текста сообщения
-        call_args = message.answer.call_args[0][0]
-        assert "Привет" in call_args
-        assert "Wildberries" in call_args
-        assert "артикул" in call_args
-        assert "MPCabinet" in call_args
-        assert "t.me/" in call_args
+        # Проверка первого сообщения (о проекте MPCabinet)
+        first_call_args = message.answer.call_args_list[0][0][0]
+        assert "MPCabinet" in first_call_args
+        assert "t.me/" in first_call_args
+        assert "экосистемы" in first_call_args or "экосистема" in first_call_args
+
+        # Проверка второго сообщения (инструкция)
+        second_call_args = message.answer.call_args_list[1][0][0]
+        assert "артикул" in second_call_args
+        assert "скачать" in second_call_args or "Чтобы скачать" in second_call_args
 
     @pytest.mark.asyncio
     async def test_cmd_help(self, message):
