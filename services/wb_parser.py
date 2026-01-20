@@ -467,38 +467,13 @@ class WBParser:
         """
         Проверить наличие видео (HLS формат).
 
-        Сначала пробуем старый URL (для совместимости),
-        затем ищем через HLS.
-
         Args:
             nm_id: Артикул
 
         Returns:
             URL видео или None
         """
-        # Попытка 1: старый формат (может работать для старых товаров)
-        old_video_url = f"https://video.wildberries.ru/{nm_id}/{nm_id}.mp4"
-
-        logger.debug(f"🎥 Product {nm_id}: проверка legacy формата видео")
-        try:
-            request_start = time.perf_counter()
-            async with self.session.head(old_video_url) as response:
-                request_time = (time.perf_counter() - request_start) * 1000  # ms
-
-                if response.status == 200:
-                    logger.info(
-                        f"✅ Video found (legacy MP4) for {nm_id} ({request_time:.0f}ms)"
-                    )
-                    return old_video_url
-                else:
-                    logger.debug(
-                        f"❌ Legacy video HTTP {response.status} ({request_time:.0f}ms)"
-                    )
-        except (aiohttp.ClientError, asyncio.TimeoutError, socket.gaierror) as e:
-            logger.debug(f"❌ Legacy video error: {type(e).__name__}")
-
-        # Попытка 2: HLS формат (новый)
-        logger.debug(f"🎥 Product {nm_id}: переход к HLS формату")
+        # HLS формат — единственный рабочий способ
         hls_url = await self._find_video_hls(nm_id)
 
         if hls_url:
