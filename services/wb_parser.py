@@ -106,26 +106,27 @@ class WBParser:
                 f"nmId_int={nm_id_int}"
             )
 
-            # 1. Найти рабочий basket (безлимитный поиск с timeout)
-            basket_start = time.perf_counter()
-            working_basket = await self._find_basket(nm_id, vol, part)
-            basket_elapsed = time.perf_counter() - basket_start
-
-            if not working_basket:
-                logger.error(f"❌ Product {nm_id}: basket NOT FOUND ({basket_elapsed:.2f}s)")
-                raise ProductNotFoundError(f"Товар {nm_id} не найден")
-
-            logger.info(
-                f"✅ Product {nm_id}: basket={working_basket:02d} найден за {basket_elapsed:.2f}s"
-            )
-
-            # 2. Найти фото (если не skip_photos)
+            # 1. Найти фото (если не skip_photos)
             photos = []
             if not skip_photos:
-                photos_start = time.perf_counter()
-                photos = await self._find_photos(nm_id, vol, part, working_basket)
-                photos_elapsed = time.perf_counter() - photos_start
-                logger.info(f"📷 Product {nm_id}: найдено {len(photos)} фото за {photos_elapsed:.2f}s")
+                # Найти рабочий basket для фото
+                basket_start = time.perf_counter()
+                working_basket = await self._find_basket(nm_id, vol, part)
+                basket_elapsed = time.perf_counter() - basket_start
+
+                if not working_basket:
+                    logger.error(f"❌ Product {nm_id}: basket NOT FOUND ({basket_elapsed:.2f}s)")
+                    # Если нужны только фото и basket не найден — ошибка
+                    if skip_video:
+                        raise ProductNotFoundError(f"Товар {nm_id} не найден")
+                else:
+                    logger.info(
+                        f"✅ Product {nm_id}: basket={working_basket:02d} найден за {basket_elapsed:.2f}s"
+                    )
+                    photos_start = time.perf_counter()
+                    photos = await self._find_photos(nm_id, vol, part, working_basket)
+                    photos_elapsed = time.perf_counter() - photos_start
+                    logger.info(f"📷 Product {nm_id}: найдено {len(photos)} фото за {photos_elapsed:.2f}s")
 
             # 3. Найти видео (если не skip_video)
             video = None
