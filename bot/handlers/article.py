@@ -136,7 +136,7 @@ async def handle_article(message: Message):
 
     except ProductNotFoundError:
         await message.answer(
-            f"❌ Товар не найден на Wildberries.\n"
+            f"❌ Товар: {nm_id} — не найден!\n\n"
             f"Проверьте артикул и попробуйте снова."
         )
         elapsed = time.perf_counter() - start_time
