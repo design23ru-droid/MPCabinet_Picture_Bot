@@ -69,7 +69,7 @@ async def handle_article(message: Message):
         # Отправка клавиатуры с начальным статусом видео
         await status_msg.edit_text(
             text=info_text_base + f'🎥 Видео: ⏳ ищем 0%\nㅤ\n<a href="{wb_url}">&#8203;</a>',
-            reply_markup=get_media_type_keyboard(nm_id),
+            reply_markup=get_media_type_keyboard(nm_id, "searching"),
             parse_mode="HTML"
         )
 
@@ -79,7 +79,7 @@ async def handle_article(message: Message):
             try:
                 await status_msg.edit_text(
                     text=info_text_base + f'🎥 Видео: ⏳ ищем {progress}%\nㅤ\n<a href="{wb_url}">&#8203;</a>',
-                    reply_markup=get_media_type_keyboard(nm_id),
+                    reply_markup=get_media_type_keyboard(nm_id, "searching"),
                     parse_mode="HTML"
                 )
             except Exception as e:
@@ -96,10 +96,11 @@ async def handle_article(message: Message):
                 cache.set(nm_id, video_url)
 
                 # Финальное обновление
-                video_status = "есть ✅" if video_url else "нет ⚠️ или недоступно.\nПробуйте снова если уверены, что в карточке есть видео"
+                video_text = "есть ✅" if video_url else "нет ⚠️ или недоступно.\nПробуйте снова если уверены, что в карточке есть видео"
+                keyboard_status = "found" if video_url else "not_found"
                 await status_msg.edit_text(
-                    text=info_text_base + f'🎥 Видео: {video_status}\nㅤ\n<a href="{wb_url}">&#8203;</a>',
-                    reply_markup=get_media_type_keyboard(nm_id),
+                    text=info_text_base + f'🎥 Видео: {video_text}\nㅤ\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id, keyboard_status),
                     parse_mode="HTML"
                 )
 
@@ -113,7 +114,7 @@ async def handle_article(message: Message):
                 # Убираем строку о видео при ошибке
                 await status_msg.edit_text(
                     text=info_text_base + f'ㅤ\n<a href="{wb_url}">&#8203;</a>',
-                    reply_markup=get_media_type_keyboard(nm_id),
+                    reply_markup=get_media_type_keyboard(nm_id, "not_found"),
                     parse_mode="HTML"
                 )
 

@@ -141,7 +141,8 @@ class TestArticleHandler:
         assert message.answer.call_count >= 2  # Сначала статус, потом ошибка
         error_call = message.answer.call_args_list[-1]
         error_text = error_call[0][0]
-        assert "Товар не найден" in error_text
+        assert "не найден" in error_text
+        assert "99999999" in error_text  # Артикул должен быть в сообщении
 
     @pytest.mark.asyncio
     async def test_handle_article_wb_api_error(self, message):
