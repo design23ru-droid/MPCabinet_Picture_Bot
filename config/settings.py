@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     HLS_TEMP_DIR: Optional[str] = None  # None = системная temp
     HLS_MAX_VIDEO_SIZE_MB: int = 50  # Лимит Telegram для локальных файлов
 
+    # Сжатие видео
+    VIDEO_CRF: int = 28  # Качество сжатия (18=отличное, 23=хорошее, 28=приемлемое, 32=низкое)
+    VIDEO_PRESET: str = "fast"  # Скорость кодирования (ultrafast, fast, medium, slow)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

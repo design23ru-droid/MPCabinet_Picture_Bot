@@ -74,13 +74,16 @@ class HLSConverter:
         logger.info(f"🎬 Начинаю конвертацию HLS → MP4: {hls_url}")
         start_time = time.perf_counter()
 
-        # Команда ffmpeg
+        # Команда ffmpeg с сжатием
         cmd = [
             self.settings.FFMPEG_PATH,
-            '-i', hls_url,              # Input HLS URL
-            '-c', 'copy',               # Без перекодирования
-            '-bsf:a', 'aac_adtstoasc',  # Фикс AAC для MP4
-            '-y',                       # Перезапись если существует
+            '-i', hls_url,                          # Input HLS URL
+            '-c:v', 'libx264',                      # Видео кодек H.264
+            '-crf', str(self.settings.VIDEO_CRF),  # Качество (28 = ~50% размера)
+            '-preset', self.settings.VIDEO_PRESET, # Скорость кодирования
+            '-c:a', 'aac',                          # Аудио кодек AAC
+            '-b:a', '128k',                         # Битрейт аудио
+            '-y',                                   # Перезапись если существует
             str(output_path)
         ]
 
