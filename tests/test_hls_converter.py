@@ -110,12 +110,22 @@ class TestConvertHlsToMp4:
             with patch('asyncio.create_subprocess_exec') as mock:
                 process = AsyncMock()
 
-                # Имитируем долгий процесс
-                async def slow_communicate():
+                # Имитируем долгий процесс через медленный readline
+                async def slow_readline():
                     await asyncio.sleep(10)
-                    return (b'', b'')
+                    return b''
 
-                process.communicate = slow_communicate
+                process.stdout = AsyncMock()
+                process.stdout.readline = slow_readline
+
+                process.stderr = AsyncMock()
+                process.stderr.read = AsyncMock(return_value=b'')
+
+                async def slow_wait():
+                    await asyncio.sleep(10)
+                    return 0
+
+                process.wait = slow_wait
                 process.kill = MagicMock()
                 mock.return_value = process
 
@@ -137,9 +147,18 @@ class TestConvertHlsToMp4:
             with patch('asyncio.create_subprocess_exec') as mock:
                 process = AsyncMock()
                 process.returncode = 1
-                process.communicate = AsyncMock(
-                    return_value=(b'', b'Error: Invalid input')
-                )
+
+                # Мокаем stdout.readline для чтения прогресса
+                process.stdout = AsyncMock()
+                process.stdout.readline = AsyncMock(return_value=b'')  # Сразу конец
+
+                # Мокаем stderr.read для чтения ошибок
+                process.stderr = AsyncMock()
+                process.stderr.read = AsyncMock(return_value=b'Error: Invalid input')
+
+                # Мокаем wait
+                process.wait = AsyncMock(return_value=1)
+
                 mock.return_value = process
 
                 with pytest.raises(HLSConversionError, match="ffmpeg error"):
@@ -165,7 +184,18 @@ class TestConvertHlsToMp4:
             with patch('asyncio.create_subprocess_exec') as mock:
                 process = AsyncMock()
                 process.returncode = 0
-                process.communicate = AsyncMock(return_value=(b'', b''))
+
+                # Мокаем stdout.readline для чтения прогресса
+                process.stdout = AsyncMock()
+                process.stdout.readline = AsyncMock(return_value=b'')  # Сразу конец
+
+                # Мокаем stderr.read для чтения ошибок
+                process.stderr = AsyncMock()
+                process.stderr.read = AsyncMock(return_value=b'')
+
+                # Мокаем wait
+                process.wait = AsyncMock(return_value=0)
+
                 mock.return_value = process
 
                 # Патчим генерацию имени файла

@@ -148,30 +148,48 @@ class MediaDownloader:
 
         try:
             if is_hls:
-                # HLS требует конвертации
+                # HLS требует конвертации с прогрессом
+                last_progress = [0]  # Используем список для изменения в замыкании
+
+                async def update_progress(percent: int):
+                    if percent > last_progress[0]:
+                        last_progress[0] = percent
+                        try:
+                            await status_msg.edit_text(f"📤 Скачивание: {percent}%")
+                        except Exception:
+                            pass
+
                 try:
-                    await status_msg.edit_text("🎥 Конвертирую видео (HLS → MP4)...")
+                    await status_msg.edit_text("📤 Скачивание: 0%")
                 except Exception as e:
                     logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
 
                 converter = HLSConverter()
                 temp_path = await converter.convert_hls_to_mp4(
                     media.video,
-                    nm_id=media.nm_id
+                    nm_id=media.nm_id,
+                    progress_callback=update_progress
                 )
                 video_input = FSInputFile(temp_path)
 
+                # Показываем 80% перед отправкой
                 try:
-                    await status_msg.edit_text("🎥 Отправляю видео...")
+                    await status_msg.edit_text("📤 Скачивание: 80%")
                 except Exception:
                     pass
             else:
                 # Прямой MP4 URL
                 try:
-                    await status_msg.edit_text("🎥 Загружаю видео...")
+                    await status_msg.edit_text("📤 Скачивание: 0%")
                 except Exception as e:
                     logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
                 video_input = URLInputFile(media.video)
+
+            # Показываем 90% перед отправкой в Telegram
+            try:
+                await status_msg.edit_text("📤 Скачивание: 90%")
+            except Exception:
+                pass
 
             video_start = time.perf_counter()
             await self.bot.send_video(
@@ -182,7 +200,11 @@ class MediaDownloader:
             )
             video_time = time.perf_counter() - video_start
 
-            await status_msg.delete()
+            # Удаляем сообщение о прогрессе
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
             logger.info(
                 f"✅ Видео успешно отправлено в чат {chat_id} за {video_time:.2f}s"
             )

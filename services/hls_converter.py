@@ -42,10 +42,29 @@ class HLSConverter:
         except FileNotFoundError:
             return False
 
+    @staticmethod
+    async def get_duration(url: str) -> float:
+        """Получить длительность видео через ffprobe."""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                'ffprobe', '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=15)
+            duration = float(stdout.decode().strip())
+            return duration
+        except Exception:
+            return 0.0  # Неизвестная длительность
+
     async def convert_hls_to_mp4(
         self,
         hls_url: str,
-        nm_id: str = "video"
+        nm_id: str = "video",
+        progress_callback: callable = None
     ) -> Path:
         """
         Конвертировать HLS поток в MP4 файл.
@@ -53,6 +72,7 @@ class HLSConverter:
         Args:
             hls_url: URL HLS плейлиста (m3u8)
             nm_id: Артикул для имени файла
+            progress_callback: async callback(percent: int) для обновления прогресса
 
         Returns:
             Path к временному MP4 файлу
@@ -74,7 +94,11 @@ class HLSConverter:
         logger.info(f"🎬 Начинаю конвертацию HLS → MP4: {hls_url}")
         start_time = time.perf_counter()
 
-        # Команда ffmpeg с сжатием
+        # Получаем длительность для расчёта прогресса
+        duration = await self.get_duration(hls_url) if progress_callback else 0
+        logger.debug(f"Video duration: {duration:.1f}s")
+
+        # Команда ffmpeg с сжатием и прогрессом
         cmd = [
             self.settings.FFMPEG_PATH,
             '-i', hls_url,                          # Input HLS URL
@@ -84,6 +108,7 @@ class HLSConverter:
             '-c:a', 'aac',                          # Аудио кодек AAC
             '-b:a', '128k',                         # Битрейт аудио
             '-y',                                   # Перезапись если существует
+            '-progress', 'pipe:1',                  # Прогресс в stdout
             str(output_path)
         ]
 
@@ -94,10 +119,38 @@ class HLSConverter:
                 stderr=asyncio.subprocess.PIPE
             )
 
-            # Ожидание с timeout
+            # Асинхронное чтение прогресса
+            last_percent = 0
+            stderr_data = b""
+
+            async def read_progress():
+                nonlocal last_percent
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_str = line.decode().strip()
+                    if line_str.startswith('out_time_us=') and duration > 0:
+                        try:
+                            out_time_us = int(line_str.split('=')[1])
+                            out_time_s = out_time_us / 1_000_000
+                            # Прогресс 0-80% для конвертации
+                            percent = min(int((out_time_s / duration) * 80), 80)
+                            if percent > last_percent and percent % 10 == 0:
+                                last_percent = percent
+                                if progress_callback:
+                                    await progress_callback(percent)
+                        except (ValueError, ZeroDivisionError):
+                            pass
+
+            async def read_stderr():
+                nonlocal stderr_data
+                stderr_data = await process.stderr.read()
+
+            # Запускаем чтение и ждём завершения
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
+                await asyncio.wait_for(
+                    asyncio.gather(read_progress(), read_stderr(), process.wait()),
                     timeout=self.settings.HLS_CONVERT_TIMEOUT
                 )
             except asyncio.TimeoutError:
@@ -108,7 +161,7 @@ class HLSConverter:
                 )
 
             if process.returncode != 0:
-                error_msg = stderr.decode() if stderr else "Unknown error"
+                error_msg = stderr_data.decode() if stderr_data else "Unknown error"
                 self.cleanup_temp_file(output_path)
                 raise HLSConversionError(f"ffmpeg error: {error_msg[:200]}")
 
