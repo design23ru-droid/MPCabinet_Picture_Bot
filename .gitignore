@@ -11,3 +11,7 @@ dist/
 build/
 .coverage
 htmlcov/
+
+# Ecosystem shared components (используется для копирования в другие проекты)
+# Не коммитится в Picture Bot репозиторий
+ecosystem_shared/
