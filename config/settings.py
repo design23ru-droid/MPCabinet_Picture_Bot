@@ -23,6 +23,24 @@ class Settings(BaseSettings):
     HLS_TEMP_DIR: Optional[str] = None  # None = системная temp
     HLS_MAX_VIDEO_SIZE_MB: int = 50  # Лимит Telegram для локальных файлов
 
+    # Сжатие видео
+    VIDEO_CRF: int = 28  # Качество сжатия (18=отличное, 23=хорошее, 28=приемлемое)
+    VIDEO_PRESET: str = "fast"  # Скорость кодирования (ultrafast, fast, medium, slow)
+
+    # Rate limiting (защита от спама)
+    RATE_LIMIT_SECONDS: float = 3.0  # Минимальный интервал между запросами пользователя
+
+    # Local Telegram Bot API Server
+    TELEGRAM_API_BASE_URL: Optional[str] = None  # http://telegram-bot-api:8081
+    TELEGRAM_API_LOCAL: bool = False  # True для Local Bot API (лимит 2GB вместо 50MB)
+
+    # Database (PostgreSQL)
+    DATABASE_URL: Optional[str] = None  # postgresql://user:pass@host:5432/db
+
+    # Analytics and notifications
+    ANALYTICS_CHANNEL_ID: Optional[int] = -1003238492068  # Канал для уведомлений
+    ENABLE_ANALYTICS: bool = True  # Включить/выключить аналитику
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

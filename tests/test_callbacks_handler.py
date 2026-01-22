@@ -187,3 +187,168 @@ class TestCallbacksHandler:
         assert mock_parser.get_product_media.called
         call_args = mock_parser.get_product_media.call_args[0][0]
         assert call_args == "87654321"
+
+    @pytest.mark.asyncio
+    async def test_handle_download_photos_tracks_analytics(self, callback_query, bot, product_media):
+        """Тест: отправка фото вызывает analytics.track_photos_sent через callback."""
+        callback_query.data = "download:12345678:photo"
+
+        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+             patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
+             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+
+            # Mock WBParser
+            mock_parser = AsyncMock()
+            mock_parser.__aenter__.return_value = mock_parser
+            mock_parser.__aexit__.return_value = None
+            mock_parser.get_product_media = AsyncMock(return_value=product_media)
+            MockParser.return_value = mock_parser
+
+            # Mock AnalyticsService
+            mock_analytics = MagicMock()
+            mock_analytics.track_photos_sent = AsyncMock()
+            MockAnalytics.return_value = mock_analytics
+
+            # Mock MediaDownloader - вызываем callback
+            async def mock_send_photos(chat_id, media, status_msg, on_success=None):
+                if on_success:
+                    await on_success(len(media.photos))
+
+            mock_downloader = MagicMock()
+            mock_downloader.send_photos = AsyncMock(side_effect=mock_send_photos)
+            MockDownloader.return_value = mock_downloader
+
+            await handle_download_callback(callback_query, bot)
+
+        # Проверка что analytics.track_photos_sent был вызван
+        assert mock_analytics.track_photos_sent.called
+        call_args = mock_analytics.track_photos_sent.call_args[0]
+        assert call_args[0] == callback_query.from_user.id  # user_id
+        assert call_args[1] == 12345678  # nm_id
+        assert call_args[2] == len(product_media.photos)  # count
+
+    @pytest.mark.asyncio
+    async def test_handle_download_video_tracks_analytics(self, callback_query, bot, product_media):
+        """Тест: отправка видео вызывает analytics.track_video_sent через callback."""
+        callback_query.data = "download:12345678:video"
+
+        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+             patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
+             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+
+            # Mock WBParser
+            mock_parser = AsyncMock()
+            mock_parser.__aenter__.return_value = mock_parser
+            mock_parser.__aexit__.return_value = None
+            mock_parser.get_product_media = AsyncMock(return_value=product_media)
+            MockParser.return_value = mock_parser
+
+            # Mock AnalyticsService
+            mock_analytics = MagicMock()
+            mock_analytics.track_video_sent = AsyncMock()
+            MockAnalytics.return_value = mock_analytics
+
+            # Mock MediaDownloader - вызываем callback
+            async def mock_send_video(chat_id, media, status_msg, on_success=None):
+                if on_success:
+                    await on_success()
+
+            mock_downloader = MagicMock()
+            mock_downloader.send_video = AsyncMock(side_effect=mock_send_video)
+            MockDownloader.return_value = mock_downloader
+
+            await handle_download_callback(callback_query, bot)
+
+        # Проверка что analytics.track_video_sent был вызван
+        assert mock_analytics.track_video_sent.called
+        call_args = mock_analytics.track_video_sent.call_args[0]
+        assert call_args[0] == callback_query.from_user.id  # user_id
+        assert call_args[1] == 12345678  # nm_id
+
+    @pytest.mark.asyncio
+    async def test_handle_download_both_tracks_analytics(self, callback_query, bot, product_media):
+        """Тест: отправка both вызывает оба метода analytics через callbacks."""
+        callback_query.data = "download:12345678:both"
+
+        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+             patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
+             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+
+            # Mock WBParser
+            mock_parser = AsyncMock()
+            mock_parser.__aenter__.return_value = mock_parser
+            mock_parser.__aexit__.return_value = None
+            mock_parser.get_product_media = AsyncMock(return_value=product_media)
+            MockParser.return_value = mock_parser
+
+            # Mock AnalyticsService
+            mock_analytics = MagicMock()
+            mock_analytics.track_photos_sent = AsyncMock()
+            mock_analytics.track_video_sent = AsyncMock()
+            MockAnalytics.return_value = mock_analytics
+
+            # Mock MediaDownloader - вызываем оба callback
+            async def mock_send_both(chat_id, media, status_msg, on_photos_success=None, on_video_success=None):
+                if on_photos_success:
+                    await on_photos_success(len(media.photos))
+                if on_video_success:
+                    await on_video_success()
+
+            mock_downloader = MagicMock()
+            mock_downloader.send_both = AsyncMock(side_effect=mock_send_both)
+            MockDownloader.return_value = mock_downloader
+
+            await handle_download_callback(callback_query, bot)
+
+        # Проверка что оба метода были вызваны
+        assert mock_analytics.track_photos_sent.called
+        assert mock_analytics.track_video_sent.called
+
+        photos_call_args = mock_analytics.track_photos_sent.call_args[0]
+        assert photos_call_args[0] == callback_query.from_user.id
+        assert photos_call_args[1] == 12345678
+        assert photos_call_args[2] == len(product_media.photos)
+
+        video_call_args = mock_analytics.track_video_sent.call_args[0]
+        assert video_call_args[0] == callback_query.from_user.id
+        assert video_call_args[1] == 12345678
+
+    @pytest.mark.asyncio
+    async def test_handle_download_error_no_analytics(self, callback_query, bot):
+        """Тест: при ошибке отправки аналитика не вызывается."""
+        callback_query.data = "download:12345678:photo"
+
+        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+             patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
+             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+
+            # Mock WBParser
+            mock_parser = AsyncMock()
+            mock_parser.__aenter__.return_value = mock_parser
+            mock_parser.__aexit__.return_value = None
+            from services.wb_parser import ProductMedia
+            empty_media = ProductMedia(
+                nm_id="12345678",
+                name="Без медиа",
+                photos=[],
+                video=None
+            )
+            mock_parser.get_product_media = AsyncMock(return_value=empty_media)
+            MockParser.return_value = mock_parser
+
+            # Mock AnalyticsService
+            mock_analytics = MagicMock()
+            mock_analytics.track_photos_sent = AsyncMock()
+            MockAnalytics.return_value = mock_analytics
+
+            # Mock MediaDownloader - бросает ошибку
+            mock_downloader = MagicMock()
+            mock_downloader.send_photos = AsyncMock(
+                side_effect=NoMediaError("У этого товара нет фотографий")
+            )
+            MockDownloader.return_value = mock_downloader
+
+            await handle_download_callback(callback_query, bot)
+
+        # Проверка что analytics.track_photos_sent НЕ был вызван
+        assert not mock_analytics.track_photos_sent.called

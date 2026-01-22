@@ -15,6 +15,7 @@ class TestWBParser:
         nm_id = "12345678"
         vol = 123
         part = 12345
+        video_part = 1234  # nm_id // 10000 для видео
 
         # Мокируем basket (найден с первой попытки - basket 01)
         mock_aiohttp.head(
@@ -33,9 +34,9 @@ class TestWBParser:
             status=404
         )
 
-        # Мокируем legacy видео (найдено)
+        # Мокируем HLS видео (найдено на basket 01, vol 1)
         mock_aiohttp.head(
-            f"https://video.wildberries.ru/{nm_id}/{nm_id}.mp4",
+            f"https://videonme-basket-01.wbbasket.ru/vol1/part{video_part}/{nm_id}/hls/1440p/index.m3u8",
             status=200
         )
 
@@ -46,7 +47,7 @@ class TestWBParser:
         assert len(media.photos) == 3
         assert media.has_photos()
         assert media.has_video()
-        assert media.video == f"https://video.wildberries.ru/{nm_id}/{nm_id}.mp4"
+        assert media.video == f"https://videonme-basket-01.wbbasket.ru/vol1/part{video_part}/{nm_id}/hls/1440p/index.m3u8"
 
     @pytest.mark.asyncio
     async def test_get_product_media_photos_only(self, mock_aiohttp):
@@ -96,7 +97,7 @@ class TestWBParser:
 
     @pytest.mark.asyncio
     async def test_get_product_media_not_found_basket(self, mock_aiohttp):
-        """Тест: товар не найден (basket не найден за timeout)."""
+        """Тест: товар не найден (basket не найден, только фото запрошены)."""
         nm_id = "99999999"
         vol = 999
         part = 99999
@@ -110,7 +111,7 @@ class TestWBParser:
 
         async with WBParser() as parser:
             with pytest.raises(ProductNotFoundError, match="не найден"):
-                await parser.get_product_media(nm_id)
+                await parser.get_product_media(nm_id, skip_video=True)
 
     @pytest.mark.asyncio
     async def test_get_product_media_no_media(self, mock_aiohttp):
@@ -264,22 +265,6 @@ class TestWBParser:
             photos = await parser._find_photos(nm_id, vol, part, basket)
 
         assert len(photos) == 0
-
-    @pytest.mark.asyncio
-    async def test_check_video_legacy_mp4(self, mock_aiohttp):
-        """Тест: legacy MP4 видео найдено."""
-        nm_id = "66666666"
-
-        # Legacy видео найдено
-        mock_aiohttp.head(
-            f"https://video.wildberries.ru/{nm_id}/{nm_id}.mp4",
-            status=200
-        )
-
-        async with WBParser() as parser:
-            video_url = await parser._check_video(nm_id)
-
-        assert video_url == f"https://video.wildberries.ru/{nm_id}/{nm_id}.mp4"
 
     @pytest.mark.asyncio
     async def test_product_media_dataclass(self):

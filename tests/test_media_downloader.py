@@ -240,3 +240,129 @@ class TestMediaDownloader:
 
         # Проверка логирования предупреждения
         assert "Видео не удалось отправить" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_send_photos_with_callback_success(self, bot, product_media, message):
+        """Тест: send_photos вызывает callback после успешной отправки."""
+        downloader = MediaDownloader(bot)
+        chat_id = 123456789
+
+        # Callback для отслеживания вызова
+        callback_called = []
+
+        async def on_success(count: int):
+            callback_called.append(count)
+
+        await downloader.send_photos(
+            chat_id, product_media, message, on_success=on_success
+        )
+
+        # Проверка что callback был вызван с правильным количеством фото
+        assert len(callback_called) == 1
+        assert callback_called[0] == len(product_media.photos)
+
+        # Проверка что отправка прошла успешно
+        assert bot.send_media_group.called
+
+    @pytest.mark.asyncio
+    async def test_send_photos_with_callback_error(self, bot, product_media, message, caplog):
+        """Тест: send_photos продолжает работу если callback кидает exception."""
+        downloader = MediaDownloader(bot)
+        chat_id = 123456789
+
+        async def on_success(count: int):
+            raise ValueError("Callback error")
+
+        # Не должно быть исключения из-за ошибки в callback
+        await downloader.send_photos(
+            chat_id, product_media, message, on_success=on_success
+        )
+
+        # Проверка что отправка прошла успешно
+        assert bot.send_media_group.called
+
+        # Проверка что ошибка callback была залогирована
+        assert "Ошибка в callback после отправки фото" in caplog.text
+        assert "ValueError" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_send_video_with_callback_success(self, bot, product_media, message):
+        """Тест: send_video вызывает callback после успешной отправки."""
+        downloader = MediaDownloader(bot)
+        chat_id = 123456789
+
+        # Callback для отслеживания вызова
+        callback_called = [False]
+
+        async def on_success():
+            callback_called[0] = True
+
+        await downloader.send_video(
+            chat_id, product_media, message, on_success=on_success
+        )
+
+        # Проверка что callback был вызван
+        assert callback_called[0] is True
+
+        # Проверка что отправка прошла успешно
+        assert bot.send_video.called
+
+    @pytest.mark.asyncio
+    async def test_send_video_with_callback_error(self, bot, product_media, message, caplog):
+        """Тест: send_video продолжает работу если callback кидает exception."""
+        downloader = MediaDownloader(bot)
+        chat_id = 123456789
+
+        async def on_success():
+            raise RuntimeError("Callback failed")
+
+        # Не должно быть исключения из-за ошибки в callback
+        await downloader.send_video(
+            chat_id, product_media, message, on_success=on_success
+        )
+
+        # Проверка что отправка прошла успешно
+        assert bot.send_video.called
+
+        # Проверка что ошибка callback была залогирована
+        assert "Ошибка в callback после отправки видео" in caplog.text
+        assert "RuntimeError" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_send_both_with_callbacks_success(self, bot, product_media, message):
+        """Тест: send_both вызывает оба callback после успешной отправки."""
+        downloader = MediaDownloader(bot)
+        chat_id = 123456789
+
+        # Mock для bot.send_message
+        new_status_msg = MagicMock()
+        new_status_msg.edit_text = AsyncMock()
+        new_status_msg.delete = AsyncMock()
+        bot.send_message = AsyncMock(return_value=new_status_msg)
+
+        # Callbacks для отслеживания вызовов
+        photos_callback_called = []
+        video_callback_called = [False]
+
+        async def on_photos_success(count: int):
+            photos_callback_called.append(count)
+
+        async def on_video_success():
+            video_callback_called[0] = True
+
+        await downloader.send_both(
+            chat_id,
+            product_media,
+            message,
+            on_photos_success=on_photos_success,
+            on_video_success=on_video_success
+        )
+
+        # Проверка что оба callback были вызваны
+        assert len(photos_callback_called) == 1
+        assert photos_callback_called[0] == len(product_media.photos)
+        assert video_callback_called[0] is True
+
+        # Проверка что отправлены и фото и видео
+        assert bot.send_media_group.called
+        assert bot.send_video.called

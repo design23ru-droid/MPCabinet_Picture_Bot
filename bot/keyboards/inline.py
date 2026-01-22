@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-def get_media_type_keyboard(nm_id: str) -> InlineKeyboardMarkup:
+def get_media_type_keyboard(nm_id: str, video_status: str = "searching") -> InlineKeyboardMarkup:
     """
     Клавиатура выбора типа медиа.
 
@@ -12,29 +12,34 @@ def get_media_type_keyboard(nm_id: str) -> InlineKeyboardMarkup:
 
     Args:
         nm_id: Артикул товара
+        video_status: Статус видео - "searching", "found", "not_found"
 
     Returns:
         InlineKeyboardMarkup с кнопками выбора
     """
     builder = InlineKeyboardBuilder()
 
+    # Кнопка "Скачать фото" - всегда
     builder.row(
         InlineKeyboardButton(
-            text="📷 Фото",
+            text="📷 Скачать фото",
             callback_data=f"download:{nm_id}:photo"
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🎥 Видео",
-            callback_data=f"download:{nm_id}:video"
+
+    # Кнопки с видео - только если видео найдено
+    if video_status == "found":
+        builder.row(
+            InlineKeyboardButton(
+                text="🎬 Скачать видео",
+                callback_data=f"download:{nm_id}:video"
+            )
         )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📷 + 🎥 Всё",
-            callback_data=f"download:{nm_id}:both"
+        builder.row(
+            InlineKeyboardButton(
+                text="📦 Скачать всё",
+                callback_data=f"download:{nm_id}:both"
+            )
         )
-    )
 
     return builder.as_markup()

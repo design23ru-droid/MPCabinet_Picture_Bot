@@ -3,7 +3,7 @@
 import asyncio
 import aiohttp
 import socket
-from typing import List, Optional
+from typing import List, Optional, Callable, Awaitable
 from dataclasses import dataclass
 import logging
 import time
@@ -131,13 +131,29 @@ class WBParser:
             # 3. Найти видео (если не skip_video)
             video = None
             if not skip_video:
-                video_start = time.perf_counter()
-                video = await self._check_video(nm_id)
-                video_elapsed = time.perf_counter() - video_start
-                if video:
-                    logger.info(f"🎥 Product {nm_id}: видео найдено за {video_elapsed:.2f}s")
+                # Проверка кеша
+                from services.video_cache import get_video_cache
+                cache = get_video_cache()
+                found_in_cache, cached_video = cache.get(nm_id)
+
+                if found_in_cache:
+                    # В кеше (может быть None если видео нет)
+                    video = cached_video
+                    status = "есть" if video else "НЕТ"
+                    logger.info(f"🎥 Product {nm_id}: видео из КЕША ({status})")
                 else:
-                    logger.info(f"🎥 Product {nm_id}: видео НЕ найдено ({video_elapsed:.2f}s)")
+                    # Нет в кеше - ищем
+                    video_start = time.perf_counter()
+                    video = await self._check_video(nm_id)
+                    video_elapsed = time.perf_counter() - video_start
+
+                    # Сохранить в кеш (даже если None - чтобы не искать повторно)
+                    cache.set(nm_id, video)
+
+                    if video:
+                        logger.info(f"🎥 Product {nm_id}: видео найдено за {video_elapsed:.2f}s")
+                    else:
+                        logger.info(f"🎥 Product {nm_id}: видео НЕ найдено ({video_elapsed:.2f}s)")
 
             # Проверка что нашли хоть что-то
             if not photos and not video:
@@ -145,7 +161,7 @@ class WBParser:
 
             return ProductMedia(
                 nm_id=nm_id,
-                name=f"Товар {nm_id}",  # Название недоступно без API
+                name=f"Товар {nm_id}",
                 photos=photos,
                 video=video
             )
@@ -371,7 +387,11 @@ class WBParser:
 
         return None
 
-    async def _find_video_hls(self, nm_id: str) -> Optional[str]:
+    async def _find_video_hls(
+        self,
+        nm_id: str,
+        progress_callback: Optional[Callable[[int], Awaitable[None]]] = None
+    ) -> Optional[str]:
         """
         Найти HLS видео товара через быстрый перебор basket+vol.
 
@@ -385,6 +405,7 @@ class WBParser:
 
         Args:
             nm_id: Артикул товара
+            progress_callback: Callback для обновления прогресса (0-100%)
 
         Returns:
             URL плейлиста index.m3u8 или None
@@ -424,22 +445,55 @@ class WBParser:
             f"{total_batches} батчей, timeout=30s"
         )
 
+        batch_times = []  # Время обработки батчей для анализа
+        last_progress_update = start_time  # Для дебаунсинга обновлений прогресса
+
         for i in range(0, len(all_combinations), BATCH_SIZE):
             # Timeout check
             elapsed = time.time() - start_time
             if elapsed > 30:
-                logger.warning(f"⏱️  Video search TIMEOUT для {nm_id} после {elapsed:.1f}s")
+                avg_time = sum(batch_times) / len(batch_times) if batch_times else 0
+                logger.warning(
+                    f"⏱️  Video search TIMEOUT для {nm_id} после {elapsed:.1f}s, "
+                    f"остановлен на batch {batch_num}/{total_batches}, "
+                    f"avg batch time: {avg_time:.3f}s"
+                )
                 return None
 
             batch = all_combinations[i:i + BATCH_SIZE]
             batch_num = i // BATCH_SIZE + 1
+            batch_start = time.time()
 
-            logger.debug(
-                f"🔄 Video {nm_id}: batch {batch_num}/{total_batches} "
-                f"(elapsed {elapsed:.1f}s)"
+            # Обновление прогресса (каждые 10% с дебаунсингом 2 сек)
+            progress = int((batch_num / total_batches) * 100)
+            time_since_last_update = time.time() - last_progress_update
+
+            # Обновляем если прошло 2+ секунды ИЛИ каждые 10%
+            should_update = (
+                progress_callback is not None and
+                (time_since_last_update >= 2.0 or progress % 10 == 0)
             )
 
+            if should_update:
+                try:
+                    await progress_callback(progress)
+                    last_progress_update = time.time()
+                except Exception as e:
+                    logger.warning(f"Progress callback error: {e}")
+
             result = await self._check_video_batch(nm_id, part, batch)
+
+            batch_time = time.time() - batch_start
+            batch_times.append(batch_time)
+
+            # Логирование каждые 10 батчей
+            if batch_num % 10 == 0:
+                avg_time = sum(batch_times[-10:]) / 10
+                logger.info(
+                    f"🔄 Video {nm_id}: batch {batch_num}/{total_batches}, "
+                    f"elapsed={elapsed:.1f}s, last 10 avg={avg_time:.3f}s/batch"
+                )
+
             if result:
                 basket, vol = result
                 url = (
@@ -463,43 +517,23 @@ class WBParser:
         )
         return None
 
-    async def _check_video(self, nm_id: str) -> Optional[str]:
+    async def _check_video(
+        self,
+        nm_id: str,
+        progress_callback: Optional[Callable[[int], Awaitable[None]]] = None
+    ) -> Optional[str]:
         """
         Проверить наличие видео (HLS формат).
 
-        Сначала пробуем старый URL (для совместимости),
-        затем ищем через HLS.
-
         Args:
             nm_id: Артикул
+            progress_callback: Callback для обновления прогресса (0-100%)
 
         Returns:
             URL видео или None
         """
-        # Попытка 1: старый формат (может работать для старых товаров)
-        old_video_url = f"https://video.wildberries.ru/{nm_id}/{nm_id}.mp4"
-
-        logger.debug(f"🎥 Product {nm_id}: проверка legacy формата видео")
-        try:
-            request_start = time.perf_counter()
-            async with self.session.head(old_video_url) as response:
-                request_time = (time.perf_counter() - request_start) * 1000  # ms
-
-                if response.status == 200:
-                    logger.info(
-                        f"✅ Video found (legacy MP4) for {nm_id} ({request_time:.0f}ms)"
-                    )
-                    return old_video_url
-                else:
-                    logger.debug(
-                        f"❌ Legacy video HTTP {response.status} ({request_time:.0f}ms)"
-                    )
-        except (aiohttp.ClientError, asyncio.TimeoutError, socket.gaierror) as e:
-            logger.debug(f"❌ Legacy video error: {type(e).__name__}")
-
-        # Попытка 2: HLS формат (новый)
-        logger.debug(f"🎥 Product {nm_id}: переход к HLS формату")
-        hls_url = await self._find_video_hls(nm_id)
+        # HLS формат — единственный рабочий способ
+        hls_url = await self._find_video_hls(nm_id, progress_callback)
 
         if hls_url:
             return hls_url

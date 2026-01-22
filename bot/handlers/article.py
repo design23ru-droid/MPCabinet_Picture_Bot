@@ -4,10 +4,13 @@ from aiogram import Router
 from aiogram.types import Message
 import logging
 import time
+import asyncio
 
 from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
 from services.wb_parser import WBParser
+from services.video_cache import get_video_cache
+from services.analytics import AnalyticsService
 from bot.keyboards.inline import get_media_type_keyboard
 from utils.decorators import retry_on_telegram_error
 
@@ -44,6 +47,10 @@ async def handle_article(message: Message):
 
         logger.info(f"✅ Артикул распознан: {nm_id} (user {user.id})")
 
+        # Трекинг запроса артикула в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_article_request(user.id, int(nm_id))
+
         # Отправка сообщения о поиске
         status_msg = await message.answer(f"🔍 Ищу товар {nm_id}...")
 
@@ -58,24 +65,71 @@ async def handle_article(message: Message):
             logger.warning(f"⚠️  Товар {nm_id} без фото для user {user.id}, time={elapsed:.2f}s")
             return
 
-        info_text = (
-            f"✅ Товар найден!\n\n"
-            f"📦 {media.name}\n"
-            f"🔢 Артикул: {nm_id}\n\n"
-            f"📷 Фото: {len(media.photos)} шт.\n\n"
-            f"Выберите что хотите получить:"
+        wb_url = f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx"
+        info_text_base = (
+            f"✅Товар: {nm_id} — найден!\n\n"
+            f"📷 Фото: {len(media.photos)} шт.\n"
         )
 
-        # Отправка клавиатуры
+        # Отправка клавиатуры с начальным статусом видео
         await status_msg.edit_text(
-            text=info_text,
-            reply_markup=get_media_type_keyboard(nm_id)
+            text=info_text_base + f'🎥 Видео: ⏳ ищем 0%\nㅤ\n<a href="{wb_url}">&#8203;</a>',
+            reply_markup=get_media_type_keyboard(nm_id, "searching"),
+            parse_mode="HTML"
         )
+
+        # Запуск фонового поиска видео
+        async def update_video_progress(progress: int):
+            """Обновление прогресса поиска видео."""
+            try:
+                await status_msg.edit_text(
+                    text=info_text_base + f'🎥 Видео: ⏳ ищем {progress}%\nㅤ\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id, "searching"),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.debug(f"Failed to update progress: {e}")
+
+        # Фоновый поиск видео
+        async def search_video():
+            try:
+                async with WBParser() as parser:
+                    video_url = await parser._check_video(nm_id, update_video_progress)
+
+                # Сохранение в кеш
+                cache = get_video_cache()
+                cache.set(nm_id, video_url)
+
+                # Финальное обновление
+                video_text = "есть ✅" if video_url else "нет ⚠️ или недоступно.\nПробуйте снова если уверены, что в карточке есть видео"
+                keyboard_status = "found" if video_url else "not_found"
+                await status_msg.edit_text(
+                    text=info_text_base + f'🎥 Видео: {video_text}\nㅤ\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id, keyboard_status),
+                    parse_mode="HTML"
+                )
+
+                video_elapsed = time.perf_counter() - start_time
+                logger.info(
+                    f"✅ Товар {nm_id} найден: photos={len(media.photos)}, "
+                    f"video={bool(video_url)}, user={user.id}, time={video_elapsed:.2f}s"
+                )
+            except Exception as e:
+                logger.error(f"Video search error for {nm_id}: {e}")
+                # Убираем строку о видео при ошибке
+                await status_msg.edit_text(
+                    text=info_text_base + f'ㅤ\n<a href="{wb_url}">&#8203;</a>',
+                    reply_markup=get_media_type_keyboard(nm_id, "not_found"),
+                    parse_mode="HTML"
+                )
+
+        # Запускаем поиск в фоне
+        asyncio.create_task(search_video())
 
         elapsed = time.perf_counter() - start_time
         logger.info(
-            f"✅ Товар {nm_id} найден: photos={len(media.photos)}, "
-            f"user={user.id}, time={elapsed:.2f}s"
+            f"✅ Карточка {nm_id} отправлена: photos={len(media.photos)}, "
+            f"user={user.id}, time={elapsed:.2f}s (video search in background)"
         )
 
     except InvalidArticleError as e:
@@ -88,13 +142,21 @@ async def handle_article(message: Message):
 
     except ProductNotFoundError:
         await message.answer(
-            f"❌ Товар не найден на Wildberries.\n"
+            f"❌ Товар: {nm_id} — не найден!\n\n"
             f"Проверьте артикул и попробуйте снова."
         )
         elapsed = time.perf_counter() - start_time
         logger.warning(
             f"❌ Товар не найден для user {user.id}: '{message.text}', "
             f"time={elapsed:.2f}s"
+        )
+
+        # Трекинг ошибки в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_error(
+            user.id,
+            "product_not_found",
+            f"Товар {nm_id} не найден"
         )
 
     except WBAPIError as e:
@@ -108,6 +170,14 @@ async def handle_article(message: Message):
             f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
         )
 
+        # Трекинг ошибки в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_error(
+            user.id,
+            "wb_api_error",
+            str(e)
+        )
+
     except Exception as e:
         await message.answer(
             "❌ Произошла ошибка. Попробуйте позже."
@@ -116,4 +186,12 @@ async def handle_article(message: Message):
         logger.exception(
             f"❌ Неожиданная ошибка для user {user.id}, текст '{message.text}': "
             f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+        )
+
+        # Трекинг ошибки в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_error(
+            user.id,
+            "unexpected_error",
+            f"{type(e).__name__}: {str(e)}"
         )
