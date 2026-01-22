@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # Database (PostgreSQL)
     DATABASE_URL: Optional[str] = None  # postgresql://user:pass@host:5432/db
 
+    # Analytics and notifications
+    ANALYTICS_CHANNEL_ID: Optional[int] = -1003238492068  # Канал для уведомлений
+    ENABLE_ANALYTICS: bool = True  # Включить/выключить аналитику
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

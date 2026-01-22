@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Callable, Awaitable
 from aiogram import Bot
 from aiogram.types import Message, InputMediaPhoto, URLInputFile, FSInputFile
 
@@ -27,7 +27,8 @@ class MediaDownloader:
         self,
         chat_id: int,
         media: ProductMedia,
-        status_msg: Message
+        status_msg: Message,
+        on_success: Optional[Callable[[int], Awaitable[None]]] = None
     ) -> None:
         """
         Отправка фотографий пользователю с прогрессом.
@@ -36,6 +37,7 @@ class MediaDownloader:
             chat_id: ID чата
             media: Медиа товара
             status_msg: Сообщение для обновления прогресса
+            on_success: Опциональный callback, вызывается после успешной отправки с количеством фото
 
         Raises:
             NoMediaError: Нет фотографий у товара
@@ -99,6 +101,16 @@ class MediaDownloader:
                 )
                 raise
 
+        # Вызов callback после успешной отправки
+        if on_success:
+            try:
+                await on_success(total)
+            except Exception as e:
+                logger.warning(
+                    f"⚠️  Ошибка в callback после отправки фото: "
+                    f"{type(e).__name__}: {e}"
+                )
+
         # Удаление сообщения о прогрессе
         try:
             await status_msg.delete()
@@ -116,7 +128,8 @@ class MediaDownloader:
         self,
         chat_id: int,
         media: ProductMedia,
-        status_msg: Message
+        status_msg: Message,
+        on_success: Optional[Callable[[], Awaitable[None]]] = None
     ) -> None:
         """
         Отправка видео пользователю.
@@ -127,6 +140,7 @@ class MediaDownloader:
             chat_id: ID чата
             media: Медиа товара
             status_msg: Сообщение для обновления прогресса
+            on_success: Опциональный callback, вызывается после успешной отправки видео
 
         Raises:
             NoMediaError: Нет видео у товара
@@ -217,6 +231,16 @@ class MediaDownloader:
                     pass
 
             video_time = time.perf_counter() - video_start
+
+            # Вызов callback после успешной отправки
+            if on_success:
+                try:
+                    await on_success()
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️  Ошибка в callback после отправки видео: "
+                        f"{type(e).__name__}: {e}"
+                    )
 
             # Удаляем сообщение о прогрессе
             try:
@@ -420,7 +444,9 @@ class MediaDownloader:
         self,
         chat_id: int,
         media: ProductMedia,
-        status_msg: Message
+        status_msg: Message,
+        on_photos_success: Optional[Callable[[int], Awaitable[None]]] = None,
+        on_video_success: Optional[Callable[[], Awaitable[None]]] = None
     ) -> None:
         """
         Отправка фото и видео.
@@ -429,6 +455,8 @@ class MediaDownloader:
             chat_id: ID чата
             media: Медиа товара
             status_msg: Сообщение для обновления прогресса
+            on_photos_success: Опциональный callback после успешной отправки фото
+            on_video_success: Опциональный callback после успешной отправки видео
 
         Raises:
             NoMediaError: Нет медиафайлов у товара
@@ -444,7 +472,7 @@ class MediaDownloader:
 
         # Отправка фото
         if media.has_photos():
-            await self.send_photos(chat_id, media, status_msg)
+            await self.send_photos(chat_id, media, status_msg, on_success=on_photos_success)
 
             # Если есть видео, создаем новое сообщение для прогресса
             if media.has_video():
@@ -456,7 +484,7 @@ class MediaDownloader:
         # Отправка видео
         if media.has_video():
             try:
-                await self.send_video(chat_id, media, status_msg)
+                await self.send_video(chat_id, media, status_msg, on_success=on_video_success)
             except Exception as e:
                 # Если ошибка только с видео, но фото отправлены - не критично
                 logger.warning(

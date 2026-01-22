@@ -10,6 +10,7 @@ from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
 from services.wb_parser import WBParser
 from services.video_cache import get_video_cache
+from services.analytics import AnalyticsService
 from bot.keyboards.inline import get_media_type_keyboard
 from utils.decorators import retry_on_telegram_error
 
@@ -45,6 +46,10 @@ async def handle_article(message: Message):
         nm_id = ArticleValidator.extract_article(message.text)
 
         logger.info(f"✅ Артикул распознан: {nm_id} (user {user.id})")
+
+        # Трекинг запроса артикула в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_article_request(user.id, int(nm_id))
 
         # Отправка сообщения о поиске
         status_msg = await message.answer(f"🔍 Ищу товар {nm_id}...")
@@ -146,6 +151,14 @@ async def handle_article(message: Message):
             f"time={elapsed:.2f}s"
         )
 
+        # Трекинг ошибки в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_error(
+            user.id,
+            "product_not_found",
+            f"Товар {nm_id} не найден"
+        )
+
     except WBAPIError as e:
         await message.answer(
             "❌ Не удалось получить данные с Wildberries.\n"
@@ -157,6 +170,14 @@ async def handle_article(message: Message):
             f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
         )
 
+        # Трекинг ошибки в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_error(
+            user.id,
+            "wb_api_error",
+            str(e)
+        )
+
     except Exception as e:
         await message.answer(
             "❌ Произошла ошибка. Попробуйте позже."
@@ -165,4 +186,12 @@ async def handle_article(message: Message):
         logger.exception(
             f"❌ Неожиданная ошибка для user {user.id}, текст '{message.text}': "
             f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
+        )
+
+        # Трекинг ошибки в аналитике
+        analytics = AnalyticsService()
+        await analytics.track_error(
+            user.id,
+            "unexpected_error",
+            f"{type(e).__name__}: {str(e)}"
         )

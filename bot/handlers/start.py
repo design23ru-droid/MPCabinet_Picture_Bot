@@ -5,6 +5,9 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from services.analytics import AnalyticsService
+from services.notifications import send_new_user_notification
+
 logger = logging.getLogger(__name__)
 router = Router()
 
@@ -12,13 +15,32 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     """Обработчик команды /start."""
-    # Логируем нового пользователя
     user = message.from_user
+
+    # Логируем пользователя
     logger.info(
-        f"🆕 Новый пользователь: id={user.id}, "
+        f"🆕 Пользователь: id={user.id}, "
         f"@{user.username or 'no_username'}, "
         f"{user.first_name or ''} {user.last_name or ''}".strip()
     )
+
+    # Трекинг в аналитике
+    analytics = AnalyticsService()
+    is_new_user = await analytics.track_user_start(
+        user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name
+    )
+
+    # Отправка уведомления о новом пользователе в канал
+    if is_new_user:
+        await send_new_user_notification(
+            bot=message.bot,
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name
+        )
 
     # Сообщение 1: О проекте MPCabinet
     await message.answer(

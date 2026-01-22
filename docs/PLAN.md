@@ -219,17 +219,46 @@ CREATE INDEX idx_events_telegram_id ON shared.analytics_events(telegram_id);
 
 #### Фаза 4: Интеграция в handlers
 
+**Архитектурное решение: Callback Pattern**
+
+Для трекинга отправки медиа используется **Callback Pattern** (Вариант 5):
+- MediaDownloader получает опциональные коллбеки `on_success`, `on_photos_success`, `on_video_success`
+- Коллбеки вызываются ТОЛЬКО после успешной отправки медиа
+- Return type методов НЕ меняется (обратная совместимость)
+- MediaDownloader НЕ знает про аналитику (Separation of Concerns)
+- Graceful degradation: ошибка в коллбеке не роняет отправку
+
+**Преимущества:**
+- ✅ Чистая архитектура (MediaDownloader универсален)
+- ✅ Трекинг только успешных операций
+- ✅ Обратная совместимость (параметры опциональные)
+- ✅ Расширяемость (любая логика через коллбеки)
+
 **Задачи:**
-- [ ] Обновить `bot/handlers/start.py`:
+- [x] Обновить `bot/handlers/start.py`:
   - После приветствия вызвать `analytics.track_user_start()`
   - Если новый пользователь → отправить уведомление в канал
-- [ ] Обновить `bot/handlers/article.py`:
+- [x] Обновить `bot/handlers/article.py`:
   - После распознавания артикула → `analytics.track_article_request()`
-  - После отправки фото → `analytics.track_photos_sent()`
-  - После отправки видео → `analytics.track_video_sent()`
   - При ошибках → `analytics.track_error()`
-- [ ] Обновить `bot/middlewares/error_handler.py`:
-  - При необработанных ошибках → `analytics.track_error()`
+- [ ] Добавить callbacks в `services/media_downloader.py`:
+  - `send_photos(..., on_success: Optional[Callable[[int], Awaitable[None]]] = None)`
+  - `send_video(..., on_success: Optional[Callable[[], Awaitable[None]]] = None)`
+  - `send_both(..., on_photos_success=..., on_video_success=...)`
+  - Вызов коллбеков после успешной отправки
+  - Graceful degradation при ошибке в коллбеке
+- [ ] Обновить тесты `tests/test_media_downloader.py`:
+  - Проверка что коллбек вызывается при успешной отправке
+  - Проверка что коллбек НЕ вызывается при ошибке отправки
+  - Проверка graceful degradation при ошибке в коллбеке
+  - Проверка для send_both: фото OK + видео FAIL → только on_photos_success
+- [ ] Интегрировать в `bot/handlers/callbacks.py`:
+  - Передавать лямбды с `analytics.track_photos_sent(user_id, nm_id, count)`
+  - Передавать лямбды с `analytics.track_video_sent(user_id, nm_id)`
+  - Для send_both: 2 коллбека (фото и видео раздельно)
+- [ ] Добавить интеграционные тесты `tests/test_callbacks_handler.py`:
+  - Проверка что аналитика записывается при успешной отправке
+  - Проверка что аналитика НЕ записывается при ошибке
 
 ---
 
