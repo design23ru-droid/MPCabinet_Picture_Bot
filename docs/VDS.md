@@ -296,8 +296,18 @@ docker exec -it telegram-ecosystem-postgres-1 psql -U telegram_admin -d telegram
 -- Количество пользователей
 SELECT COUNT(*) FROM shared.users;
 
--- Последние 10 событий аналитики
+-- Последние 10 событий аналитики (версия 0.5.0+)
 SELECT * FROM shared.analytics_events ORDER BY created_at DESC LIMIT 10;
+
+-- Статистика за сегодня (версия 0.5.0+)
+SELECT
+    COUNT(DISTINCT telegram_id) FILTER (WHERE event_type = 'user_start' AND event_data->>'is_new' = 'true') AS new_users,
+    COUNT(*) FILTER (WHERE event_type = 'article_request') AS article_requests,
+    SUM((event_data->>'count')::int) FILTER (WHERE event_type = 'photo_sent') AS photos_sent,
+    COUNT(*) FILTER (WHERE event_type = 'video_sent') AS videos_sent,
+    COUNT(*) FILTER (WHERE event_type = 'error') AS errors
+FROM shared.analytics_events
+WHERE created_at >= CURRENT_DATE;
 
 -- Размер базы данных
 SELECT pg_size_pretty(pg_database_size('telegram_ecosystem'));
@@ -371,6 +381,112 @@ crontab -e
 # Добавить строку:
 # 0 3 * * * /opt/telegram-ecosystem/scripts/backup-postgres.sh >> /var/log/postgres-backup.log 2>&1
 ```
+
+### Миграция БД для версии 0.5.0 (Система аналитики)
+
+**Версия:** 0.5.0
+**Дата:** 22.01.2026
+**Цель:** Добавление таблиц для отслеживания пользователей и аналитики активности
+
+#### Что добавляется
+
+1. **Таблица `shared.users`** - хранение данных пользователей
+2. **Таблица `shared.analytics_events`** - события и статистика
+3. **Индексы** для оптимизации запросов
+
+#### Применение миграции
+
+```bash
+# 1. Подключиться к VPS
+ssh root@89.23.101.91
+
+# 2. Перейти в директорию проекта
+cd /opt/telegram-ecosystem
+
+# 3. Проверить наличие файла миграции
+ls postgres/init/02-analytics.sql
+
+# 4. Применить миграцию
+docker compose exec postgres psql -U telegram_admin -d telegram_ecosystem -f /docker-entrypoint-initdb.d/02-analytics.sql
+
+# Или через docker exec:
+docker exec telegram-ecosystem-postgres-1 psql -U telegram_admin -d telegram_ecosystem -f /docker-entrypoint-initdb.d/02-analytics.sql
+```
+
+#### Проверка миграции
+
+```bash
+# Подключиться к PostgreSQL
+docker compose exec postgres psql -U telegram_admin telegram_ecosystem
+
+# Проверить таблицы
+\dt shared.*
+
+# Должны быть видны:
+# shared.users
+# shared.analytics_events
+
+# Проверить индексы
+\di shared.*
+
+# Должны быть:
+# idx_events_created_at
+# idx_events_type
+# idx_events_telegram_id
+# idx_events_date_type
+
+# Проверить структуру таблицы users
+\d shared.users
+
+# Проверить структуру таблицы events
+\d shared.analytics_events
+
+# Выход
+\q
+```
+
+#### Откат миграции (если нужно)
+
+```bash
+# Подключиться к PostgreSQL
+docker compose exec postgres psql -U telegram_admin telegram_ecosystem
+
+# Удалить таблицы (осторожно! удаляет все данные)
+DROP TABLE IF EXISTS shared.analytics_events CASCADE;
+DROP TABLE IF EXISTS shared.users CASCADE;
+
+# Выход
+\q
+```
+
+#### После миграции
+
+После успешного применения миграции:
+
+1. **Перезапустить бот**
+   ```bash
+   docker compose restart mpcabinet-picture-bot
+   ```
+
+2. **Проверить логи**
+   ```bash
+   docker compose logs -f mpcabinet-picture-bot
+
+   # Должно быть:
+   # ✅ PostgreSQL pool initialized
+   # ✅ APScheduler started: daily digest at 00:00 MSK
+   ```
+
+3. **Протестировать аналитику**
+   ```bash
+   # Отправить боту /start
+   # Проверить запись в БД:
+   docker compose exec postgres psql -U telegram_admin telegram_ecosystem -c \
+   "SELECT * FROM shared.users ORDER BY first_seen DESC LIMIT 1;"
+
+   docker compose exec postgres psql -U telegram_admin telegram_ecosystem -c \
+   "SELECT * FROM shared.analytics_events ORDER BY created_at DESC LIMIT 5;"
+   ```
 
 ---
 
