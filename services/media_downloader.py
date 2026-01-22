@@ -155,12 +155,12 @@ class MediaDownloader:
                     if percent > last_progress[0]:
                         last_progress[0] = percent
                         try:
-                            await status_msg.edit_text(f"📤 Скачивание: {percent}%")
+                            await status_msg.edit_text(f"⬇️ Скачивание: {percent}%")
                         except Exception:
                             pass
 
                 try:
-                    await status_msg.edit_text("📤 Скачивание: 0%")
+                    await status_msg.edit_text("⬇️ Скачивание: 0%")
                 except Exception as e:
                     logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
 
@@ -172,32 +172,50 @@ class MediaDownloader:
                 )
                 video_input = FSInputFile(temp_path)
 
-                # Показываем 80% перед отправкой
-                try:
-                    await status_msg.edit_text("📤 Скачивание: 80%")
-                except Exception:
-                    pass
             else:
                 # Прямой MP4 URL
                 try:
-                    await status_msg.edit_text("📤 Скачивание: 0%")
+                    await status_msg.edit_text("⬇️ Скачивание...")
                 except Exception as e:
                     logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
                 video_input = URLInputFile(media.video)
 
-            # Показываем 90% перед отправкой в Telegram
-            try:
-                await status_msg.edit_text("📤 Скачивание: 90%")
-            except Exception:
-                pass
+            # Анимированный спиннер для отправки
+            spinner_frames = ["◐", "◓", "◑", "◒"]
+            spinner_running = [True]  # Флаг для остановки
+
+            async def animate_spinner():
+                frame_idx = 0
+                while spinner_running[0]:
+                    try:
+                        await status_msg.edit_text(
+                            f"📤 Отправка в Telegram {spinner_frames[frame_idx]}"
+                        )
+                    except Exception:
+                        pass
+                    frame_idx = (frame_idx + 1) % len(spinner_frames)
+                    await asyncio.sleep(0.8)
+
+            # Запускаем анимацию
+            spinner_task = asyncio.create_task(animate_spinner())
 
             video_start = time.perf_counter()
-            await self.bot.send_video(
-                chat_id=chat_id,
-                video=video_input,
-                caption=f"Видео: {media.name}",
-                request_timeout=120  # Увеличен таймаут для медленных сетей
-            )
+            try:
+                await self.bot.send_video(
+                    chat_id=chat_id,
+                    video=video_input,
+                    caption=f"Видео: {media.name}",
+                    request_timeout=120  # Увеличен таймаут для медленных сетей
+                )
+            finally:
+                # Останавливаем анимацию
+                spinner_running[0] = False
+                spinner_task.cancel()
+                try:
+                    await spinner_task
+                except asyncio.CancelledError:
+                    pass
+
             video_time = time.perf_counter() - video_start
 
             # Удаляем сообщение о прогрессе
@@ -242,6 +260,158 @@ class MediaDownloader:
 
         finally:
             # Очистка временного файла
+            if temp_path and converter:
+                converter.cleanup_temp_file(temp_path)
+
+    @log_execution_time()
+    async def send_video_as_document(
+        self,
+        chat_id: int,
+        media: ProductMedia,
+        status_msg: Message
+    ) -> None:
+        """
+        Отправка видео как документа (без превью, оригинальное качество).
+
+        Быстрее чем send_video, так как не сжимает видео.
+
+        Args:
+            chat_id: ID чата
+            media: Медиа товара
+            status_msg: Сообщение для обновления прогресса
+
+        Raises:
+            NoMediaError: Нет видео у товара
+            HLSConversionError: Ошибка скачивания HLS
+            FFmpegNotFoundError: ffmpeg не установлен
+        """
+        if not media.has_video():
+            raise NoMediaError("У этого товара нет видео")
+
+        logger.info(
+            f"📄 Отправка видео как документа в чат {chat_id} "
+            f"(product {media.nm_id}, URL: {media.video})"
+        )
+
+        is_hls = HLSConverter.is_hls_url(media.video)
+        temp_path: Optional[Path] = None
+        converter: Optional[HLSConverter] = None
+
+        try:
+            if is_hls:
+                last_progress = [0]
+
+                async def update_progress(percent: int):
+                    if percent > last_progress[0]:
+                        last_progress[0] = percent
+                        try:
+                            await status_msg.edit_text(f"⬇️ Скачивание: {percent}%")
+                        except Exception:
+                            pass
+
+                try:
+                    await status_msg.edit_text("⬇️ Скачивание: 0%")
+                except Exception as e:
+                    logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
+
+                converter = HLSConverter()
+                # Используем быстрое скачивание без сжатия
+                temp_path = await converter.download_hls_fast(
+                    media.video,
+                    nm_id=media.nm_id,
+                    progress_callback=update_progress
+                )
+                file_input = FSInputFile(
+                    temp_path,
+                    filename=f"video_{media.nm_id}.mp4"
+                )
+            else:
+                try:
+                    await status_msg.edit_text("⬇️ Скачивание...")
+                except Exception as e:
+                    logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
+                file_input = URLInputFile(
+                    media.video,
+                    filename=f"video_{media.nm_id}.mp4"
+                )
+
+            # Спиннер для отправки
+            spinner_frames = ["◐", "◓", "◑", "◒"]
+            spinner_running = [True]
+
+            async def animate_spinner():
+                frame_idx = 0
+                while spinner_running[0]:
+                    try:
+                        await status_msg.edit_text(
+                            f"📤 Отправка в Telegram {spinner_frames[frame_idx]}"
+                        )
+                    except Exception:
+                        pass
+                    frame_idx = (frame_idx + 1) % len(spinner_frames)
+                    await asyncio.sleep(0.8)
+
+            spinner_task = asyncio.create_task(animate_spinner())
+
+            send_start = time.perf_counter()
+            try:
+                await self.bot.send_document(
+                    chat_id=chat_id,
+                    document=file_input,
+                    caption=f"📄 Видео: {media.name}",
+                    request_timeout=180  # Больше таймаут для больших файлов
+                )
+            finally:
+                spinner_running[0] = False
+                spinner_task.cancel()
+                try:
+                    await spinner_task
+                except asyncio.CancelledError:
+                    pass
+
+            send_time = time.perf_counter() - send_start
+
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+
+            logger.info(
+                f"✅ Видео как документ отправлено в чат {chat_id} за {send_time:.2f}s"
+            )
+
+        except FFmpegNotFoundError:
+            logger.error("❌ ffmpeg не установлен")
+            try:
+                await status_msg.edit_text(
+                    "❌ Сервер не поддерживает HLS видео (ffmpeg не установлен)"
+                )
+            except Exception:
+                pass
+            raise
+
+        except HLSConversionError as e:
+            logger.error(f"❌ Ошибка скачивания HLS: {e}")
+            try:
+                await status_msg.edit_text(f"❌ Ошибка скачивания видео: {e}")
+            except Exception:
+                pass
+            raise
+
+        except Exception as e:
+            logger.error(
+                f"❌ Ошибка отправки документа: {type(e).__name__}: {e}\n"
+                f"URL: {media.video}"
+            )
+            try:
+                await status_msg.edit_text(
+                    "❌ Не удалось загрузить видео. Возможно, файл слишком большой"
+                )
+            except Exception:
+                pass
+            raise
+
+        finally:
             if temp_path and converter:
                 converter.cleanup_temp_file(temp_path)
 

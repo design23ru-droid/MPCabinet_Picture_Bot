@@ -134,9 +134,9 @@ class HLSConverter:
                         try:
                             out_time_us = int(line_str.split('=')[1])
                             out_time_s = out_time_us / 1_000_000
-                            # Прогресс 0-80% для конвертации
+                            # Прогресс 0-80% для конвертации с шагом 5%
                             percent = min(int((out_time_s / duration) * 80), 80)
-                            if percent > last_percent and percent % 10 == 0:
+                            if percent >= last_percent + 5:
                                 last_percent = percent
                                 if progress_callback:
                                     await progress_callback(percent)
@@ -182,6 +182,117 @@ class HLSConverter:
                     f"⚠️ Видео {file_size_mb:.1f}MB превышает лимит "
                     f"{self.settings.HLS_MAX_VIDEO_SIZE_MB}MB"
                 )
+
+            return output_path
+
+        except FileNotFoundError:
+            raise FFmpegNotFoundError("ffmpeg не найден в PATH")
+
+    async def download_hls_fast(
+        self,
+        hls_url: str,
+        nm_id: str = "video",
+        progress_callback: callable = None
+    ) -> Path:
+        """
+        Быстрое скачивание HLS без перекодирования (-c copy).
+
+        Сохраняет оригинальное качество и размер, но работает намного быстрее.
+
+        Args:
+            hls_url: URL HLS плейлиста (m3u8)
+            nm_id: Артикул для имени файла
+            progress_callback: async callback(percent: int) для обновления прогресса
+
+        Returns:
+            Path к временному MP4 файлу
+
+        Raises:
+            FFmpegNotFoundError: ffmpeg не найден
+            HLSConversionError: Ошибка скачивания
+        """
+        if not await self.check_ffmpeg_available():
+            raise FFmpegNotFoundError(
+                "ffmpeg не установлен. Установите: https://ffmpeg.org/download.html"
+            )
+
+        timestamp = int(time.time())
+        output_path = self._temp_dir / f"wb_video_{nm_id}_{timestamp}.mp4"
+
+        logger.info(f"📥 Быстрое скачивание HLS (без сжатия): {hls_url}")
+        start_time = time.perf_counter()
+
+        duration = await self.get_duration(hls_url) if progress_callback else 0
+
+        # Команда ffmpeg с -c copy (без перекодирования)
+        cmd = [
+            self.settings.FFMPEG_PATH,
+            '-i', hls_url,
+            '-c', 'copy',  # Копирование без перекодирования
+            '-y',
+            '-progress', 'pipe:1',
+            str(output_path)
+        ]
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            last_percent = 0
+            stderr_data = b""
+
+            async def read_progress():
+                nonlocal last_percent
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_str = line.decode().strip()
+                    if line_str.startswith('out_time_us=') and duration > 0:
+                        try:
+                            out_time_us = int(line_str.split('=')[1])
+                            out_time_s = out_time_us / 1_000_000
+                            percent = min(int((out_time_s / duration) * 80), 80)
+                            if percent >= last_percent + 5:
+                                last_percent = percent
+                                if progress_callback:
+                                    await progress_callback(percent)
+                        except (ValueError, ZeroDivisionError):
+                            pass
+
+            async def read_stderr():
+                nonlocal stderr_data
+                stderr_data = await process.stderr.read()
+
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(read_progress(), read_stderr(), process.wait()),
+                    timeout=self.settings.HLS_CONVERT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                self.cleanup_temp_file(output_path)
+                raise HLSConversionError(
+                    f"Timeout скачивания ({self.settings.HLS_CONVERT_TIMEOUT}s)"
+                )
+
+            if process.returncode != 0:
+                error_msg = stderr_data.decode() if stderr_data else "Unknown error"
+                self.cleanup_temp_file(output_path)
+                raise HLSConversionError(f"ffmpeg error: {error_msg[:200]}")
+
+            if not output_path.exists():
+                raise HLSConversionError("Выходной файл не создан")
+
+            file_size_mb = output_path.stat().st_size / (1024 * 1024)
+            elapsed = time.perf_counter() - start_time
+
+            logger.info(
+                f"✅ Скачивание завершено: {file_size_mb:.1f}MB за {elapsed:.1f}s"
+            )
 
             return output_path
 
