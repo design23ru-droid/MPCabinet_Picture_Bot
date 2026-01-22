@@ -165,7 +165,7 @@ class MediaDownloader:
                     logger.warning(f"⚠️  Не удалось обновить прогресс: {e}")
 
                 converter = HLSConverter()
-                temp_path = await converter.convert_hls_to_mp4(
+                temp_path = await converter.download_hls_fast(
                     media.video,
                     nm_id=media.nm_id,
                     progress_callback=update_progress
