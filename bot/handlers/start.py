@@ -1,15 +1,25 @@
 """Обработчики команд /start и /help."""
 
+import logging
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+logger = logging.getLogger(__name__)
 router = Router()
 
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     """Обработчик команды /start."""
+    # Логируем нового пользователя
+    user = message.from_user
+    logger.info(
+        f"🆕 Новый пользователь: id={user.id}, "
+        f"@{user.username or 'no_username'}, "
+        f"{user.first_name or ''} {user.last_name or ''}".strip()
+    )
+
     # Сообщение 1: О проекте MPCabinet
     await message.answer(
         "ℹ️ Этот бот — часть <b>экосистемы MPCabinet:</b> набора Telegram-ботов для удобной ежедневной работы менеджера на Wildberries.\n\n"
