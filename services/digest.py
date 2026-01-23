@@ -1,9 +1,10 @@
 """Сервис формирования и отправки ежедневной статистики."""
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
+import pytz
 from aiogram import Bot
 
 from services.analytics import AnalyticsService
@@ -24,8 +25,10 @@ async def send_daily_digest_job(bot: Bot, target_date: Optional[date] = None) ->
         True если дайджест отправлен успешно, False при ошибке
     """
     if target_date is None:
-        # По умолчанию - статистика за вчерашний день
-        target_date = date.today() - timedelta(days=1)
+        # По умолчанию - статистика за вчерашний день (по московскому времени)
+        msk_tz = pytz.timezone('Europe/Moscow')
+        now_msk = datetime.now(msk_tz)
+        target_date = now_msk.date() - timedelta(days=1)
 
     logger.info(f"📊 Начинаем формирование дайджеста за {target_date.strftime('%d.%m.%Y')}")
 
