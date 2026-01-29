@@ -163,7 +163,10 @@ class GatewayAdapter:
         event_data: dict
     ) -> bool:
         """
-        Отслеживание события через Gateway или локально.
+        Отслеживание события (всегда локально).
+
+        Примечание: API Gateway пока не имеет analytics endpoint,
+        поэтому события всегда записываются в локальную БД.
 
         Args:
             user_id: Telegram ID пользователя
@@ -173,33 +176,7 @@ class GatewayAdapter:
         Returns:
             True если событие успешно записано
         """
-        if self.use_gateway:
-            try:
-                return await self._track_event_via_gateway(user_id, event_type, event_data)
-            except Exception as e:
-                logger.warning(
-                    f"Gateway ошибка при track_event: {e}. Fallback на локальную БД."
-                )
-                return await self._track_event_local(user_id, event_type, event_data)
-        else:
-            return await self._track_event_local(user_id, event_type, event_data)
-
-    async def _track_event_via_gateway(
-        self,
-        user_id: int,
-        event_type: str,
-        event_data: dict
-    ) -> bool:
-        """Отслеживание события через API Gateway."""
-        client = self._create_client()
-        async with client:
-            await client.analytics.track(
-                telegram_id=user_id,
-                event_type=event_type,
-                event_data=event_data
-            )
-            logger.debug(f"Событие {event_type} для {user_id} отправлено через Gateway")
-            return True
+        return await self._track_event_local(user_id, event_type, event_data)
 
     async def _track_event_local(
         self,
