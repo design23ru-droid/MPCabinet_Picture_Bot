@@ -8,13 +8,13 @@ Feature Flag: USE_GATEWAY
 При ошибке Gateway автоматически происходит fallback на локальную БД.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 from config.settings import get_settings
-from utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
