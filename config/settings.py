@@ -41,8 +41,26 @@ class Settings(BaseSettings):
     ANALYTICS_CHANNEL_ID: Optional[int] = -1003238492068  # Канал для уведомлений
     ENABLE_ANALYTICS: bool = True  # Включить/выключить аналитику
 
+    # API Gateway (микросервисы)
+    USE_GATEWAY: bool = False  # True = микросервисы, False = локальная БД
+    GATEWAY_URL: str = "http://api-gateway:8000"  # URL API Gateway
+    GATEWAY_API_KEY: Optional[str] = None  # API ключ (если требуется)
+    GATEWAY_TIMEOUT: int = 10  # Таймаут запросов к Gateway
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True
     )
+
+
+# Singleton instance
+_settings: Optional[Settings] = None
+
+
+def get_settings() -> Settings:
+    """Получить singleton экземпляр настроек."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings

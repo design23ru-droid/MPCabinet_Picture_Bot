@@ -7,7 +7,7 @@ import time
 
 from services.wb_parser import WBParser
 from services.media_downloader import MediaDownloader
-from services.analytics import AnalyticsService
+from services.gateway_adapter import get_gateway_adapter
 from utils.exceptions import NoMediaError, WBAPIError
 from utils.decorators import retry_on_telegram_error
 
@@ -62,29 +62,37 @@ async def handle_download_callback(callback: CallbackQuery, bot: Bot):
 
         # Загрузка и отправка медиа
         downloader = MediaDownloader(bot)
-        analytics = AnalyticsService()
+        gateway = get_gateway_adapter()
 
         if media_type == "photo":
             await downloader.send_photos(
                 callback.message.chat.id,
                 media,
                 status_msg,
-                on_success=lambda count: analytics.track_photos_sent(user.id, int(nm_id), count)
+                on_success=lambda count: gateway.track_event(
+                    user.id, "photo_sent", {"nm_id": int(nm_id), "count": count}
+                )
             )
         elif media_type == "video":
             await downloader.send_video(
                 callback.message.chat.id,
                 media,
                 status_msg,
-                on_success=lambda: analytics.track_video_sent(user.id, int(nm_id))
+                on_success=lambda: gateway.track_event(
+                    user.id, "video_sent", {"nm_id": int(nm_id)}
+                )
             )
         elif media_type == "both":
             await downloader.send_both(
                 callback.message.chat.id,
                 media,
                 status_msg,
-                on_photos_success=lambda count: analytics.track_photos_sent(user.id, int(nm_id), count),
-                on_video_success=lambda: analytics.track_video_sent(user.id, int(nm_id))
+                on_photos_success=lambda count: gateway.track_event(
+                    user.id, "photo_sent", {"nm_id": int(nm_id), "count": count}
+                ),
+                on_video_success=lambda: gateway.track_event(
+                    user.id, "video_sent", {"nm_id": int(nm_id)}
+                )
             )
 
         # Сообщение об успехе (если status_msg не был удален)

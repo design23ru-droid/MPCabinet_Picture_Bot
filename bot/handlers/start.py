@@ -5,7 +5,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from services.analytics import AnalyticsService
+from services.gateway_adapter import get_gateway_adapter
 from services.notifications import send_new_user_notification
 
 logger = logging.getLogger(__name__)
@@ -24,9 +24,9 @@ async def cmd_start(message: Message):
         f"{user.first_name or ''} {user.last_name or ''}".strip()
     )
 
-    # Трекинг в аналитике
-    analytics = AnalyticsService()
-    is_new_user = await analytics.track_user_start(
+    # Регистрация через GatewayAdapter (микросервисы или локальная БД)
+    gateway = get_gateway_adapter()
+    result = await gateway.register_user(
         user_id=user.id,
         username=user.username,
         first_name=user.first_name,
@@ -34,7 +34,7 @@ async def cmd_start(message: Message):
     )
 
     # Отправка уведомления о новом пользователе в канал
-    if is_new_user:
+    if result.is_new:
         await send_new_user_notification(
             bot=message.bot,
             user_id=user.id,

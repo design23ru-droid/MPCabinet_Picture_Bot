@@ -10,7 +10,7 @@ from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
 from services.wb_parser import WBParser
 from services.video_cache import get_video_cache
-from services.analytics import AnalyticsService
+from services.gateway_adapter import get_gateway_adapter
 from bot.keyboards.inline import get_media_type_keyboard
 from utils.decorators import retry_on_telegram_error
 
@@ -47,9 +47,9 @@ async def handle_article(message: Message):
 
         logger.info(f"✅ Артикул распознан: {nm_id} (user {user.id})")
 
-        # Трекинг запроса артикула в аналитике
-        analytics = AnalyticsService()
-        await analytics.track_article_request(user.id, int(nm_id))
+        # Трекинг запроса артикула через GatewayAdapter
+        gateway = get_gateway_adapter()
+        await gateway.track_event(user.id, "article_request", {"nm_id": int(nm_id)})
 
         # Отправка сообщения о поиске
         status_msg = await message.answer(f"🔍 Ищу товар {nm_id}...")
@@ -151,12 +151,11 @@ async def handle_article(message: Message):
             f"time={elapsed:.2f}s"
         )
 
-        # Трекинг ошибки в аналитике
-        analytics = AnalyticsService()
-        await analytics.track_error(
-            user.id,
-            "product_not_found",
-            f"Товар {nm_id} не найден"
+        # Трекинг ошибки через GatewayAdapter
+        gateway = get_gateway_adapter()
+        await gateway.track_event(
+            user.id, "error",
+            {"error_type": "product_not_found", "message": f"Товар {nm_id} не найден"}
         )
 
     except WBAPIError as e:
@@ -170,12 +169,11 @@ async def handle_article(message: Message):
             f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
         )
 
-        # Трекинг ошибки в аналитике
-        analytics = AnalyticsService()
-        await analytics.track_error(
-            user.id,
-            "wb_api_error",
-            str(e)
+        # Трекинг ошибки через GatewayAdapter
+        gateway = get_gateway_adapter()
+        await gateway.track_event(
+            user.id, "error",
+            {"error_type": "wb_api_error", "message": str(e)}
         )
 
     except Exception as e:
@@ -188,10 +186,9 @@ async def handle_article(message: Message):
             f"{type(e).__name__}: {e}, time={elapsed:.2f}s"
         )
 
-        # Трекинг ошибки в аналитике
-        analytics = AnalyticsService()
-        await analytics.track_error(
-            user.id,
-            "unexpected_error",
-            f"{type(e).__name__}: {str(e)}"
+        # Трекинг ошибки через GatewayAdapter
+        gateway = get_gateway_adapter()
+        await gateway.track_event(
+            user.id, "error",
+            {"error_type": "unexpected_error", "message": f"{type(e).__name__}: {str(e)}"}
         )
