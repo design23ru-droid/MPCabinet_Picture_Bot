@@ -30,16 +30,16 @@ async def _get_stats_via_service(target_date: date):
         daily = await client.stats.get_daily(target_date.strftime("%Y-%m-%d"))
         users_count = await client.stats.get_users_count()
 
-    # Воронка пользователей
-    funnel_started = await client.stats.get_users_by_event("user.started")
-    funnel_active = await client.stats.get_users_by_event("article_request")
-    funnel_returning = await client.stats.get_users_by_event(
-        "article_request", min_count=2
-    )
+        # Воронка пользователей
+        funnel_started = await client.stats.get_users_by_event("user_start")
+        funnel_active = await client.stats.get_users_by_event("article_request")
+        funnel_returning = await client.stats.get_users_by_event(
+            "article_request", min_count=2
+        )
 
     event_stats = daily.stats
     return {
-        "new_users": event_stats.get("user.started", 0),
+        "new_users": event_stats.get("user_start", 0),
         "total_users": users_count.count,
         "returning_users": 0,
         "article_requests": event_stats.get("article_request", 0),
