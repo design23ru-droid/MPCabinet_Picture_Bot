@@ -14,8 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование кода
 COPY . .
 
-# Установка локального пакета api-gateway-client
+# Установка локальных пакетов
 RUN pip install --no-cache-dir -e ./packages/api-gateway-client
+RUN pip install --no-cache-dir -e ./packages/analytics-client
 
 # Запуск бота
 CMD ["python", "main.py"]

@@ -7,15 +7,32 @@ from typing import Optional
 import pytz
 from aiogram import Bot
 
+from config.settings import get_settings
 from services.analytics import AnalyticsService
 from services.notifications import send_daily_digest
 
 logger = logging.getLogger(__name__)
 
 
+async def _get_stats_via_service(target_date: date):
+    """Получить статистику через analytics-service."""
+    from analytics_client import AnalyticsClient
+
+    settings = get_settings()
+    async with AnalyticsClient(
+        base_url=settings.ANALYTICS_SERVICE_URL,
+        timeout=float(settings.ANALYTICS_SERVICE_TIMEOUT),
+    ) as client:
+        return await client.stats.get_daily(target_date.strftime("%Y-%m-%d"))
+
+
 async def send_daily_digest_job(bot: Bot, target_date: Optional[date] = None) -> bool:
     """
     Отправка ежедневного дайджеста статистики.
+
+    При USE_ANALYTICS_SERVICE=True: получает данные из analytics-service.
+    При USE_ANALYTICS_SERVICE=False: получает данные из локальной БД.
+    При ошибке analytics-service: fallback на локальную БД.
 
     Args:
         bot: Экземпляр aiogram Bot
@@ -30,12 +47,27 @@ async def send_daily_digest_job(bot: Bot, target_date: Optional[date] = None) ->
         now_msk = datetime.now(msk_tz)
         target_date = now_msk.date() - timedelta(days=1)
 
-    logger.info(f"📊 Начинаем формирование дайджеста за {target_date.strftime('%d.%m.%Y')}")
+    logger.info(f"Начинаем формирование дайджеста за {target_date.strftime('%d.%m.%Y')}")
 
     try:
-        # Получение статистики
-        analytics = AnalyticsService()
-        stats = await analytics.get_daily_stats(target_date)
+        settings = get_settings()
+        stats = None
+
+        if settings.USE_ANALYTICS_SERVICE:
+            try:
+                stats = await _get_stats_via_service(target_date)
+                logger.info(
+                    f"Статистика получена из analytics-service за {target_date}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"analytics-service ошибка: {e}. Fallback на локальную БД."
+                )
+
+        # Fallback на локальную БД или USE_ANALYTICS_SERVICE=False
+        if stats is None:
+            analytics = AnalyticsService()
+            stats = await analytics.get_daily_stats(target_date)
 
         if stats is None:
             logger.warning("БД недоступна - дайджест не может быть отправлен")
@@ -45,15 +77,15 @@ async def send_daily_digest_job(bot: Bot, target_date: Optional[date] = None) ->
         success = await send_daily_digest(bot, stats, target_date)
 
         if success:
-            logger.info(f"✅ Дайджест за {target_date.strftime('%d.%m.%Y')} успешно отправлен")
+            logger.info(f"Дайджест за {target_date.strftime('%d.%m.%Y')} успешно отправлен")
         else:
-            logger.warning(f"⚠️  Не удалось отправить дайджест за {target_date.strftime('%d.%m.%Y')}")
+            logger.warning(f"Не удалось отправить дайджест за {target_date.strftime('%d.%m.%Y')}")
 
         return success
 
     except Exception as e:
         logger.exception(
-            f"❌ Ошибка при формировании дайджеста за {target_date.strftime('%d.%m.%Y')}: "
+            f"Ошибка при формировании дайджеста за {target_date.strftime('%d.%m.%Y')}: "
             f"{type(e).__name__}: {e}"
         )
         return False

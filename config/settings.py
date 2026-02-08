@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     WB_MEDIA_SERVICE_URL: str = "http://wb-media-service:8013"  # URL сервиса
     WB_MEDIA_SERVICE_TIMEOUT: int = 40  # 30 сек video search + 10 сек запас
 
+    # Analytics Service (микросервис аналитики)
+    USE_ANALYTICS_SERVICE: bool = False  # True = analytics-service, False = локальная БД
+    ANALYTICS_SERVICE_URL: str = "http://analytics-service:8003"  # URL сервиса
+    ANALYTICS_SERVICE_TIMEOUT: int = 10  # Таймаут запросов к analytics-service
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -5,7 +5,11 @@ Feature Flag: USE_GATEWAY
 - True: вызовы через api-gateway-client (микросервисы)
 - False: локальная БД (текущая логика)
 
-При ошибке Gateway автоматически происходит fallback на локальную БД.
+Feature Flag: USE_ANALYTICS_SERVICE
+- True: события отправляются в analytics-service (8003) через analytics-client
+- False: события записываются в локальную БД
+
+При ошибке Gateway/analytics-service автоматически происходит fallback на локальную БД.
 """
 
 import logging
@@ -33,7 +37,11 @@ class GatewayAdapter:
     - USE_GATEWAY=True: вызовы через api-gateway-client
     - USE_GATEWAY=False: локальная БД (analytics)
 
-    При ошибке Gateway автоматически происходит fallback на локальную БД.
+    Использует Feature Flag USE_ANALYTICS_SERVICE для аналитики:
+    - USE_ANALYTICS_SERVICE=True: события через analytics-client
+    - USE_ANALYTICS_SERVICE=False: события в локальную БД
+
+    При ошибке автоматически происходит fallback на локальную БД.
     """
 
     def __init__(self):
@@ -44,11 +52,21 @@ class GatewayAdapter:
         self.api_key = settings.GATEWAY_API_KEY
         self.timeout = settings.GATEWAY_TIMEOUT
 
+        # Analytics Service
+        self.use_analytics_service = settings.USE_ANALYTICS_SERVICE
+        self.analytics_service_url = getattr(
+            settings, 'ANALYTICS_SERVICE_URL', 'http://analytics-service:8003'
+        )
+        self.analytics_service_timeout = getattr(
+            settings, 'ANALYTICS_SERVICE_TIMEOUT', 10
+        )
+
         # Lazy-init для локальных сервисов
         self._analytics = None
 
         logger.info(
             f"GatewayAdapter инициализирован: USE_GATEWAY={self.use_gateway}, "
+            f"USE_ANALYTICS_SERVICE={self.use_analytics_service}, "
             f"URL={self.gateway_url if self.use_gateway else 'N/A'}"
         )
 
@@ -163,10 +181,11 @@ class GatewayAdapter:
         event_data: dict
     ) -> bool:
         """
-        Отслеживание события (всегда локально).
+        Отслеживание события.
 
-        Примечание: API Gateway пока не имеет analytics endpoint,
-        поэтому события всегда записываются в локальную БД.
+        При USE_ANALYTICS_SERVICE=True: отправка в analytics-service через analytics-client.
+        При USE_ANALYTICS_SERVICE=False: запись в локальную БД.
+        При ошибке analytics-service: fallback на локальную БД.
 
         Args:
             user_id: Telegram ID пользователя
@@ -176,7 +195,38 @@ class GatewayAdapter:
         Returns:
             True если событие успешно записано
         """
-        return await self._track_event_local(user_id, event_type, event_data)
+        if self.use_analytics_service:
+            try:
+                return await self._track_event_via_service(user_id, event_type, event_data)
+            except Exception as e:
+                logger.warning(
+                    f"analytics-service ошибка: {e}. Fallback на локальную БД."
+                )
+                return await self._track_event_local(user_id, event_type, event_data)
+        else:
+            return await self._track_event_local(user_id, event_type, event_data)
+
+    async def _track_event_via_service(
+        self,
+        user_id: int,
+        event_type: str,
+        event_data: dict
+    ) -> bool:
+        """Отправка события в analytics-service через analytics-client."""
+        from analytics_client import AnalyticsClient
+
+        async with AnalyticsClient(
+            base_url=self.analytics_service_url,
+            timeout=float(self.analytics_service_timeout),
+        ) as client:
+            await client.events.record(
+                telegram_id=user_id,
+                event_type=event_type,
+                event_data=event_data,
+            )
+
+        logger.debug(f"Событие {event_type} для {user_id} отправлено в analytics-service")
+        return True
 
     async def _track_event_local(
         self,

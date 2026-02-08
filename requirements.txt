@@ -10,3 +10,6 @@ httpx>=0.27.0
 
 # API Gateway Client (локальный пакет, устанавливается через Dockerfile)
 # pip install -e ./packages/api-gateway-client
+
+# Analytics Client (локальный пакет, устанавливается через Dockerfile)
+# pip install -e ./packages/analytics-client
