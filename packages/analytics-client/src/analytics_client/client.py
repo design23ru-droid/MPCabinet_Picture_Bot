@@ -133,6 +133,34 @@ class StatsClient(_BaseSubClient):
         data = await self._handle_response(response)
         return UsersCount(**data)
 
+    async def get_users_by_event(
+        self, event_type: str, min_count: int = 1
+    ) -> UsersCount:
+        """Get count of unique users with >= min_count events of given type.
+
+        Args:
+            event_type: Event type to filter by
+            min_count: Minimum number of events per user (default: 1)
+
+        Returns:
+            UsersCount object
+        """
+        logger.debug(
+            f"Getting users by event: type={event_type}, min_count={min_count}"
+        )
+        try:
+            response = await self._client.get(
+                "/stats/users/by-event",
+                params={"event_type": event_type, "min_count": min_count},
+            )
+        except httpx.ConnectError as e:
+            raise ConnectionError(str(e)) from e
+        except httpx.TimeoutException as e:
+            raise TimeoutError(str(e)) from e
+
+        data = await self._handle_response(response)
+        return UsersCount(count=data["count"])
+
 
 class AnalyticsClient:
     """Async HTTP client for Analytics Service.

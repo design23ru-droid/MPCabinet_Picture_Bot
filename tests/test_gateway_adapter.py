@@ -204,6 +204,11 @@ class TestDigestWithAnalyticsService:
             total_events=15,
         ))
         mock_stats_client.get_users_count = AsyncMock(return_value=MagicMock(count=42))
+        mock_stats_client.get_users_by_event = AsyncMock(side_effect=[
+            MagicMock(count=42),   # funnel_started (user.started)
+            MagicMock(count=30),   # funnel_active (article_request)
+            MagicMock(count=15),   # funnel_returning (article_request, min_count=2)
+        ])
 
         mock_analytics_client = AsyncMock()
         mock_analytics_client.stats = mock_stats_client
@@ -236,6 +241,10 @@ class TestDigestWithAnalyticsService:
             assert stats_dict["article_requests"] == 10
             assert stats_dict["photos_sent"] == 5
             assert stats_dict["total_users"] == 42
+            # Воронка
+            assert stats_dict["funnel_started"] == 42
+            assert stats_dict["funnel_active"] == 30
+            assert stats_dict["funnel_returning"] == 15
 
     @pytest.mark.asyncio
     async def test_digest_fallback_on_service_error(self):
