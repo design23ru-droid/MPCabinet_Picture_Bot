@@ -194,7 +194,7 @@ class TestDigestWithAnalyticsService:
 
     @pytest.mark.asyncio
     async def test_digest_via_analytics_service(self):
-        """Дайджест получает статистику через analytics-service."""
+        """Дайджест получает статистику через analytics-service и конвертирует в dict."""
         from datetime import date
 
         mock_stats_client = AsyncMock()
@@ -203,6 +203,7 @@ class TestDigestWithAnalyticsService:
             stats={"article_request": 10, "photo_sent": 5},
             total_events=15,
         ))
+        mock_stats_client.get_users_count = AsyncMock(return_value=MagicMock(count=42))
 
         mock_analytics_client = AsyncMock()
         mock_analytics_client.stats = mock_stats_client
@@ -217,16 +218,24 @@ class TestDigestWithAnalyticsService:
         mock_settings.ANALYTICS_CHANNEL_ID = -1003238492068
 
         mock_bot = AsyncMock()
+        mock_send = AsyncMock(return_value=True)
 
         with patch("services.digest.get_settings", return_value=mock_settings), \
              patch("analytics_client.AnalyticsClient", return_value=mock_analytics_client), \
-             patch("services.digest.send_daily_digest", new_callable=AsyncMock, return_value=True):
+             patch("services.digest.send_daily_digest", mock_send):
 
             from services.digest import send_daily_digest_job
             result = await send_daily_digest_job(mock_bot, target_date=date(2026, 2, 7))
 
             assert result is True
             mock_stats_client.get_daily.assert_called_once_with("2026-02-07")
+            mock_stats_client.get_users_count.assert_called_once()
+            # Проверяем что stats конвертирован в dict
+            call_args = mock_send.call_args
+            stats_dict = call_args[0][1]
+            assert stats_dict["article_requests"] == 10
+            assert stats_dict["photos_sent"] == 5
+            assert stats_dict["total_users"] == 42
 
     @pytest.mark.asyncio
     async def test_digest_fallback_on_service_error(self):

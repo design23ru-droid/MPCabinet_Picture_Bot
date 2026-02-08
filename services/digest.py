@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 async def _get_stats_via_service(target_date: date):
-    """Получить статистику через analytics-service."""
+    """Получить статистику через analytics-service.
+
+    Конвертирует DailyStats из analytics-service в dict формат,
+    ожидаемый send_daily_digest (new_users, total_users, article_requests, ...).
+    """
     from analytics_client import AnalyticsClient
 
     settings = get_settings()
@@ -23,7 +27,20 @@ async def _get_stats_via_service(target_date: date):
         base_url=settings.ANALYTICS_SERVICE_URL,
         timeout=float(settings.ANALYTICS_SERVICE_TIMEOUT),
     ) as client:
-        return await client.stats.get_daily(target_date.strftime("%Y-%m-%d"))
+        daily = await client.stats.get_daily(target_date.strftime("%Y-%m-%d"))
+        users_count = await client.stats.get_users_count()
+
+    event_stats = daily.stats
+    return {
+        "new_users": event_stats.get("user.started", 0),
+        "total_users": users_count.count,
+        "returning_users": 0,
+        "article_requests": event_stats.get("article_request", 0),
+        "photos_sent": event_stats.get("photo_sent", 0),
+        "unique_products": 0,
+        "videos_sent": event_stats.get("video_sent", 0),
+        "errors": event_stats.get("error", 0),
+    }
 
 
 async def send_daily_digest_job(bot: Bot, target_date: Optional[date] = None) -> bool:
