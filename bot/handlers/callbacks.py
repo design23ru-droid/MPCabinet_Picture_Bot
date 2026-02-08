@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery
 import logging
 import time
 
-from services.wb_parser import WBParser
+from services.wb_media_client import get_wb_media_client
 from services.media_downloader import MediaDownloader
 from services.gateway_adapter import get_gateway_adapter
 from utils.exceptions import NoMediaError, WBAPIError
@@ -51,14 +51,14 @@ async def handle_download_callback(callback: CallbackQuery, bot: Bot):
         await callback.message.edit_reply_markup(reply_markup=None)
         status_msg = await callback.message.edit_text("⏳ Загружаю...")
 
-        # Получение данных товара (ленивый поиск)
-        async with WBParser() as parser:
-            if media_type == "photo":
-                media = await parser.get_product_media(nm_id, skip_video=True)
-            elif media_type == "video":
-                media = await parser.get_product_media(nm_id, skip_photos=True)
-            else:  # both
-                media = await parser.get_product_media(nm_id)
+        # Получение данных товара через wb-media-service или WBParser
+        wb_media = get_wb_media_client()
+        if media_type == "photo":
+            media = await wb_media.get_product_media(nm_id, skip_video=True)
+        elif media_type == "video":
+            media = await wb_media.get_product_media(nm_id, skip_photos=True)
+        else:  # both
+            media = await wb_media.get_product_media(nm_id)
 
         # Загрузка и отправка медиа
         downloader = MediaDownloader(bot)

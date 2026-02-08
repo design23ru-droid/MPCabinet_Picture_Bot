@@ -15,18 +15,14 @@ class TestArticleHandler:
         """Тест: успешная обработка артикула с фото и видео."""
         message.text = "12345678"
 
-        # Mock WBParser и keyboard
-        with patch('bot.handlers.article.WBParser') as MockParser, \
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard, \
              patch('bot.handlers.article.asyncio.create_task') as mock_create_task:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
-            # Mock keyboard
             mock_keyboard.return_value = MagicMock()
 
             await handle_article(message)
@@ -38,13 +34,12 @@ class TestArticleHandler:
 
         # Проверка финального текста (начальное сообщение с прогрессом)
         final_call = status_msg.edit_text.call_args_list[-1]
-        # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
         assert "найден" in final_text
         assert "Товар:" in final_text
         assert "12345678" in final_text
         assert "Фото:" in final_text
-        assert "Видео:" in final_text  # Теперь всегда показываем прогресс
+        assert "Видео:" in final_text
         assert "wildberries.ru/catalog/12345678" in final_text
 
     @pytest.mark.asyncio
@@ -52,29 +47,24 @@ class TestArticleHandler:
         """Тест: товар только с фото."""
         message.text = "12345678"
 
-        with patch('bot.handlers.article.WBParser') as MockParser, \
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard, \
              patch('bot.handlers.article.asyncio.create_task') as mock_create_task:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media_photos_only)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media_photos_only)
+            mock_get_client.return_value = mock_client
 
             mock_keyboard.return_value = MagicMock()
 
             await handle_article(message)
 
-        # Проверка что было отправлено (начальное сообщение с прогрессом)
         status_msg = message.answer.return_value
         final_call = status_msg.edit_text.call_args_list[-1]
-        # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
         assert "найден" in final_text
         assert "Товар:" in final_text
         assert "Фото:" in final_text
-        # Теперь видео всегда показывается с прогрессом поиска
         assert "Видео:" in final_text
         assert "ищем" in final_text or "есть" in final_text or "нет" in final_text
 
@@ -83,7 +73,6 @@ class TestArticleHandler:
         """Тест: товар без медиа."""
         message.text = "12345678"
 
-        # Создаем ProductMedia без фото и видео
         from services.wb_parser import ProductMedia
         empty_media = ProductMedia(
             nm_id="12345678",
@@ -92,16 +81,13 @@ class TestArticleHandler:
             video=None
         )
 
-        with patch('bot.handlers.article.WBParser') as MockParser:
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=empty_media)
-            MockParser.return_value = mock_parser
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=empty_media)
+            mock_get_client.return_value = mock_client
 
             await handle_article(message)
 
-        # Проверка что отправлена ошибка
         status_msg = message.answer.return_value
         assert status_msg.edit_text.called
         error_text = status_msg.edit_text.call_args[0][0]
@@ -116,7 +102,6 @@ class TestArticleHandler:
                    side_effect=InvalidArticleError("Неверный формат")):
             await handle_article(message)
 
-        # Проверка что было сообщение об ошибке
         assert message.answer.called
         error_text = message.answer.call_args[0][0]
         assert "Неверный формат" in error_text
@@ -126,41 +111,35 @@ class TestArticleHandler:
         """Тест: товар не найден."""
         message.text = "99999999"
 
-        with patch('bot.handlers.article.WBParser') as MockParser:
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(
                 side_effect=ProductNotFoundError("Товар не найден")
             )
-            MockParser.return_value = mock_parser
+            mock_get_client.return_value = mock_client
 
             await handle_article(message)
 
-        # Проверка сообщения об ошибке
-        assert message.answer.call_count >= 2  # Сначала статус, потом ошибка
+        assert message.answer.call_count >= 2
         error_call = message.answer.call_args_list[-1]
         error_text = error_call[0][0]
         assert "не найден" in error_text
-        assert "99999999" in error_text  # Артикул должен быть в сообщении
+        assert "99999999" in error_text
 
     @pytest.mark.asyncio
     async def test_handle_article_wb_api_error(self, message):
         """Тест: ошибка WB API."""
         message.text = "12345678"
 
-        with patch('bot.handlers.article.WBParser') as MockParser:
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(
                 side_effect=WBAPIError("API Error")
             )
-            MockParser.return_value = mock_parser
+            mock_get_client.return_value = mock_client
 
             await handle_article(message)
 
-        # Проверка сообщения об ошибке API
         error_call = message.answer.call_args_list[-1]
         error_text = error_call[0][0]
         assert "Не удалось получить данные" in error_text
@@ -170,18 +149,15 @@ class TestArticleHandler:
         """Тест: неожиданная ошибка."""
         message.text = "12345678"
 
-        with patch('bot.handlers.article.WBParser') as MockParser:
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(
                 side_effect=RuntimeError("Unexpected error")
             )
-            MockParser.return_value = mock_parser
+            mock_get_client.return_value = mock_client
 
             await handle_article(message)
 
-        # Проверка сообщения об общей ошибке
         error_call = message.answer.call_args_list[-1]
         error_text = error_call[0][0]
         assert "Произошла ошибка" in error_text
@@ -191,26 +167,22 @@ class TestArticleHandler:
         """Тест: обработка URL вместо артикула."""
         message.text = "https://www.wildberries.ru/catalog/12345678/detail.aspx"
 
-        with patch('bot.handlers.article.WBParser') as MockParser, \
+        with patch('bot.handlers.article.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.article.get_media_type_keyboard') as mock_keyboard, \
              patch('bot.handlers.article.asyncio.create_task') as mock_create_task:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
             mock_keyboard.return_value = MagicMock()
 
             await handle_article(message)
 
-        # Проверка успешной обработки URL
         status_msg = message.answer.return_value
         assert status_msg.edit_text.called
         final_call = status_msg.edit_text.call_args_list[-1]
-        # Извлекаем text из kwargs (второй элемент кортежа)
         final_text = final_call[1]['text']
         assert "найден" in final_text
         assert "Товар:" in final_text
-        assert "Видео:" in final_text  # Проверяем что прогресс видео показывается
+        assert "Видео:" in final_text

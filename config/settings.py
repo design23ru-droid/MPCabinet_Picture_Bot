@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     GATEWAY_API_KEY: Optional[str] = None  # API ключ (если требуется)
     GATEWAY_TIMEOUT: int = 10  # Таймаут запросов к Gateway
 
+    # WB Media Service (микросервис поиска медиа)
+    USE_WB_MEDIA_SERVICE: bool = False  # True = wb-media-service, False = локальный WBParser
+    WB_MEDIA_SERVICE_URL: str = "http://wb-media-service:8013"  # URL сервиса
+    WB_MEDIA_SERVICE_TIMEOUT: int = 40  # 30 сек video search + 10 сек запас
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

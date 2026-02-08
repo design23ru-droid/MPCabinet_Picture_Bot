@@ -8,7 +8,7 @@ import asyncio
 
 from utils.validators import ArticleValidator
 from utils.exceptions import InvalidArticleError, ProductNotFoundError, WBAPIError
-from services.wb_parser import WBParser
+from services.wb_media_client import get_wb_media_client
 from services.video_cache import get_video_cache
 from services.gateway_adapter import get_gateway_adapter
 from bot.keyboards.inline import get_media_type_keyboard
@@ -55,8 +55,8 @@ async def handle_article(message: Message):
         status_msg = await message.answer(f"🔍 Ищу товар {nm_id}...")
 
         # Получение данных о товаре (только фото, видео ищем позже)
-        async with WBParser() as parser:
-            media = await parser.get_product_media(nm_id, skip_video=True)
+        wb_media = get_wb_media_client()
+        media = await wb_media.get_product_media(nm_id, skip_video=True)
 
         # Проверка наличия фото
         if not media.has_photos():
@@ -93,10 +93,11 @@ async def handle_article(message: Message):
         # Фоновый поиск видео
         async def search_video():
             try:
-                async with WBParser() as parser:
-                    video_url = await parser._check_video(nm_id, update_video_progress)
+                video_url = await wb_media.search_video(
+                    nm_id, progress_callback=update_video_progress
+                )
 
-                # Сохранение в кеш
+                # Сохранение в локальный кеш (для fallback режима)
                 cache = get_video_cache()
                 cache.set(nm_id, video_url)
 

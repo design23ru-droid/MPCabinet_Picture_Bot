@@ -15,24 +15,19 @@ class TestCallbacksHandler:
         """Тест: загрузка только фото."""
         callback_query.data = "download:12345678:photo"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader:
 
-            # Mock WBParser
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
-            # Mock MediaDownloader
             mock_downloader = MagicMock()
             mock_downloader.send_photos = AsyncMock()
             MockDownloader.return_value = mock_downloader
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверки
         assert callback_query.answer.called
         assert callback_query.message.edit_reply_markup.called
         assert mock_downloader.send_photos.called
@@ -42,14 +37,12 @@ class TestCallbacksHandler:
         """Тест: загрузка только видео."""
         callback_query.data = "download:12345678:video"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
             mock_downloader = MagicMock()
             mock_downloader.send_video = AsyncMock()
@@ -57,7 +50,6 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверки
         assert callback_query.answer.called
         assert mock_downloader.send_video.called
 
@@ -66,14 +58,12 @@ class TestCallbacksHandler:
         """Тест: загрузка фото и видео."""
         callback_query.data = "download:12345678:both"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
             mock_downloader = MagicMock()
             mock_downloader.send_both = AsyncMock()
@@ -81,7 +71,6 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверки
         assert callback_query.answer.called
         assert mock_downloader.send_both.called
 
@@ -90,14 +79,9 @@ class TestCallbacksHandler:
         """Тест: ошибка NoMediaError."""
         callback_query.data = "download:12345678:photo"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-
-            # Создаем товар без медиа
             from services.wb_parser import ProductMedia
             empty_media = ProductMedia(
                 nm_id="12345678",
@@ -105,8 +89,9 @@ class TestCallbacksHandler:
                 photos=[],
                 video=None
             )
-            mock_parser.get_product_media = AsyncMock(return_value=empty_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=empty_media)
+            mock_get_client.return_value = mock_client
 
             mock_downloader = MagicMock()
             mock_downloader.send_photos = AsyncMock(
@@ -116,7 +101,6 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка что сообщение об ошибке было отправлено
         assert callback_query.message.edit_text.called
         error_text = callback_query.message.edit_text.call_args[0][0]
         assert "нет фотографий" in error_text or "У этого товара" in error_text
@@ -126,18 +110,15 @@ class TestCallbacksHandler:
         """Тест: ошибка WB API."""
         callback_query.data = "download:12345678:photo"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser:
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(
                 side_effect=WBAPIError("API Error")
             )
-            MockParser.return_value = mock_parser
+            mock_get_client.return_value = mock_client
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка сообщения об ошибке
         assert callback_query.message.edit_text.called
         error_text = callback_query.message.edit_text.call_args[0][0]
         assert "Не удалось загрузить медиа" in error_text
@@ -147,18 +128,15 @@ class TestCallbacksHandler:
         """Тест: неожиданная ошибка."""
         callback_query.data = "download:12345678:photo"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser:
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(
                 side_effect=RuntimeError("Unexpected")
             )
-            MockParser.return_value = mock_parser
+            mock_get_client.return_value = mock_client
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка сообщения об ошибке
         assert callback_query.message.edit_text.called
         error_text = callback_query.message.edit_text.call_args[0][0]
         assert "Произошла ошибка" in error_text
@@ -168,14 +146,12 @@ class TestCallbacksHandler:
         """Тест: корректный парсинг callback data."""
         callback_query.data = "download:87654321:video"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader:
 
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
             mock_downloader = MagicMock()
             mock_downloader.send_video = AsyncMock()
@@ -184,32 +160,27 @@ class TestCallbacksHandler:
             await handle_download_callback(callback_query, bot)
 
         # Проверка что правильный артикул был передан
-        assert mock_parser.get_product_media.called
-        call_args = mock_parser.get_product_media.call_args[0][0]
-        assert call_args == "87654321"
+        assert mock_client.get_product_media.called
+        call_args = mock_client.get_product_media.call_args
+        assert call_args[0][0] == "87654321"
 
     @pytest.mark.asyncio
     async def test_handle_download_photos_tracks_analytics(self, callback_query, bot, product_media):
-        """Тест: отправка фото вызывает analytics.track_photos_sent через callback."""
+        """Тест: отправка фото вызывает track_event через GatewayAdapter."""
         callback_query.data = "download:12345678:photo"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
-             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+             patch('bot.handlers.callbacks.get_gateway_adapter') as mock_get_gateway:
 
-            # Mock WBParser
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
-            # Mock AnalyticsService
-            mock_analytics = MagicMock()
-            mock_analytics.track_photos_sent = AsyncMock()
-            MockAnalytics.return_value = mock_analytics
+            mock_gateway = AsyncMock()
+            mock_gateway.track_event = AsyncMock()
+            mock_get_gateway.return_value = mock_gateway
 
-            # Mock MediaDownloader - вызываем callback
             async def mock_send_photos(chat_id, media, status_msg, on_success=None):
                 if on_success:
                     await on_success(len(media.photos))
@@ -220,35 +191,28 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка что analytics.track_photos_sent был вызван
-        assert mock_analytics.track_photos_sent.called
-        call_args = mock_analytics.track_photos_sent.call_args[0]
-        assert call_args[0] == callback_query.from_user.id  # user_id
-        assert call_args[1] == 12345678  # nm_id
-        assert call_args[2] == len(product_media.photos)  # count
+        assert mock_gateway.track_event.called
+        call_args = mock_gateway.track_event.call_args
+        assert call_args[0][0] == callback_query.from_user.id
+        assert call_args[0][1] == "photo_sent"
 
     @pytest.mark.asyncio
     async def test_handle_download_video_tracks_analytics(self, callback_query, bot, product_media):
-        """Тест: отправка видео вызывает analytics.track_video_sent через callback."""
+        """Тест: отправка видео вызывает track_event через GatewayAdapter."""
         callback_query.data = "download:12345678:video"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
-             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+             patch('bot.handlers.callbacks.get_gateway_adapter') as mock_get_gateway:
 
-            # Mock WBParser
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
-            # Mock AnalyticsService
-            mock_analytics = MagicMock()
-            mock_analytics.track_video_sent = AsyncMock()
-            MockAnalytics.return_value = mock_analytics
+            mock_gateway = AsyncMock()
+            mock_gateway.track_event = AsyncMock()
+            mock_get_gateway.return_value = mock_gateway
 
-            # Mock MediaDownloader - вызываем callback
             async def mock_send_video(chat_id, media, status_msg, on_success=None):
                 if on_success:
                     await on_success()
@@ -259,35 +223,28 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка что analytics.track_video_sent был вызван
-        assert mock_analytics.track_video_sent.called
-        call_args = mock_analytics.track_video_sent.call_args[0]
-        assert call_args[0] == callback_query.from_user.id  # user_id
-        assert call_args[1] == 12345678  # nm_id
+        assert mock_gateway.track_event.called
+        call_args = mock_gateway.track_event.call_args
+        assert call_args[0][0] == callback_query.from_user.id
+        assert call_args[0][1] == "video_sent"
 
     @pytest.mark.asyncio
     async def test_handle_download_both_tracks_analytics(self, callback_query, bot, product_media):
-        """Тест: отправка both вызывает оба метода analytics через callbacks."""
+        """Тест: отправка both вызывает оба track_event."""
         callback_query.data = "download:12345678:both"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
-             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+             patch('bot.handlers.callbacks.get_gateway_adapter') as mock_get_gateway:
 
-            # Mock WBParser
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
-            mock_parser.get_product_media = AsyncMock(return_value=product_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=product_media)
+            mock_get_client.return_value = mock_client
 
-            # Mock AnalyticsService
-            mock_analytics = MagicMock()
-            mock_analytics.track_photos_sent = AsyncMock()
-            mock_analytics.track_video_sent = AsyncMock()
-            MockAnalytics.return_value = mock_analytics
+            mock_gateway = AsyncMock()
+            mock_gateway.track_event = AsyncMock()
+            mock_get_gateway.return_value = mock_gateway
 
-            # Mock MediaDownloader - вызываем оба callback
             async def mock_send_both(chat_id, media, status_msg, on_photos_success=None, on_video_success=None):
                 if on_photos_success:
                     await on_photos_success(len(media.photos))
@@ -300,32 +257,20 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка что оба метода были вызваны
-        assert mock_analytics.track_photos_sent.called
-        assert mock_analytics.track_video_sent.called
-
-        photos_call_args = mock_analytics.track_photos_sent.call_args[0]
-        assert photos_call_args[0] == callback_query.from_user.id
-        assert photos_call_args[1] == 12345678
-        assert photos_call_args[2] == len(product_media.photos)
-
-        video_call_args = mock_analytics.track_video_sent.call_args[0]
-        assert video_call_args[0] == callback_query.from_user.id
-        assert video_call_args[1] == 12345678
+        assert mock_gateway.track_event.call_count >= 2
+        call_types = [c[0][1] for c in mock_gateway.track_event.call_args_list]
+        assert "photo_sent" in call_types
+        assert "video_sent" in call_types
 
     @pytest.mark.asyncio
     async def test_handle_download_error_no_analytics(self, callback_query, bot):
         """Тест: при ошибке отправки аналитика не вызывается."""
         callback_query.data = "download:12345678:photo"
 
-        with patch('bot.handlers.callbacks.WBParser') as MockParser, \
+        with patch('bot.handlers.callbacks.get_wb_media_client') as mock_get_client, \
              patch('bot.handlers.callbacks.MediaDownloader') as MockDownloader, \
-             patch('bot.handlers.callbacks.AnalyticsService') as MockAnalytics:
+             patch('bot.handlers.callbacks.get_gateway_adapter') as mock_get_gateway:
 
-            # Mock WBParser
-            mock_parser = AsyncMock()
-            mock_parser.__aenter__.return_value = mock_parser
-            mock_parser.__aexit__.return_value = None
             from services.wb_parser import ProductMedia
             empty_media = ProductMedia(
                 nm_id="12345678",
@@ -333,15 +278,14 @@ class TestCallbacksHandler:
                 photos=[],
                 video=None
             )
-            mock_parser.get_product_media = AsyncMock(return_value=empty_media)
-            MockParser.return_value = mock_parser
+            mock_client = AsyncMock()
+            mock_client.get_product_media = AsyncMock(return_value=empty_media)
+            mock_get_client.return_value = mock_client
 
-            # Mock AnalyticsService
-            mock_analytics = MagicMock()
-            mock_analytics.track_photos_sent = AsyncMock()
-            MockAnalytics.return_value = mock_analytics
+            mock_gateway = AsyncMock()
+            mock_gateway.track_event = AsyncMock()
+            mock_get_gateway.return_value = mock_gateway
 
-            # Mock MediaDownloader - бросает ошибку
             mock_downloader = MagicMock()
             mock_downloader.send_photos = AsyncMock(
                 side_effect=NoMediaError("У этого товара нет фотографий")
@@ -350,5 +294,6 @@ class TestCallbacksHandler:
 
             await handle_download_callback(callback_query, bot)
 
-        # Проверка что analytics.track_photos_sent НЕ был вызван
-        assert not mock_analytics.track_photos_sent.called
+        # track_event НЕ должен вызываться для photo_sent/video_sent
+        for call in mock_gateway.track_event.call_args_list:
+            assert call[0][1] not in ("photo_sent", "video_sent")
